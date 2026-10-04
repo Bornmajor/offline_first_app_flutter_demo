@@ -1,42 +1,69 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_cubit.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/subscription_form_page.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/net_status_topbar.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
 
-class HomePage extends StatefulWidget {
-  const HomePage({super.key, required this.repository, this.networkInfo});
-
-  /// Source of subscription data (Drift behind it).
-  final SubscriptionRepository repository;
+/// Home screen — PAGE part: wiring only.
+///
+/// "Page / View" split:
+///   • HomePage creates the dependencies the screen needs (the Cubit).
+///   • HomeView draws the UI from the Cubit's state.
+/// Keeping them apart means the View never cares where the Cubit came from
+/// (a test could provide a different one).
+class HomePage extends StatelessWidget {
+  const HomePage({super.key, this.networkInfo});
 
   /// Injectable for tests; defaults to the real connectivity checks.
   final NetworkInfo? networkInfo;
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      // `create` runs once, lazily. The repository comes from the
+      // RepositoryProvider in main.dart. `..watchSubscriptions()` (cascade)
+      // starts listening to the database right after creating the Cubit.
+      //
+      // BlocProvider also CLOSES the Cubit when this page is removed,
+      // which cancels the database stream (see SubscriptionListCubit.close).
+      create: (context) =>
+          SubscriptionListCubit(context.read<SubscriptionRepository>())
+            ..watchSubscriptions(),
+      child: HomeView(networkInfo: networkInfo),
+    );
+  }
 }
 
-class _HomePageState extends State<HomePage> {
-  // Created once so rebuilds don't re-subscribe to the network listeners.
+/// Home screen — VIEW part: draws whatever the Cubit's state says.
+class HomeView extends StatefulWidget {
+  const HomeView({super.key, this.networkInfo});
+
+  final NetworkInfo? networkInfo;
+
+  @override
+  State<HomeView> createState() => _HomeViewState();
+}
+
+class _HomeViewState extends State<HomeView> {
+  // Network indicator: unchanged, still a plain stream (not part of the
+  // Cubit work). Created once so rebuilds don't re-subscribe.
   late final Stream<NetworkStatus> _networkStatus =
       (widget.networkInfo ?? NetworkInfo()).watchStatus();
 
-  // READ: the live Drift query, created ONCE.
-  // If this were created inside build(), every rebuild would start a brand
-  // new database query (and briefly flash the loading state).
-  late final Stream<List<Subscription>> _subscriptions = widget.repository
-      .watchAll();
-
-  /// DELETE: ask first, then soft delete.
-  ///
-  /// Notice what is NOT here: no `setState`, no removing the item from a
-  /// local list. We only change the database; `watchAll()` re-emits without
-  /// the row and the StreamBuilder redraws the list.
+  /// DELETE: the dialog is a UI job, so it stays here in the View.
+  /// The actual delete is the Cubit's job.
   Future<void> _confirmAndDelete(Subscription item) async {
+    // Read the Cubit before any `await`, so we never touch `context` after
+    // the page might have closed. `context.read<SubscriptionListCubit>()`
+    // finds the Cubit created by BlocProvider in HomePage (an ancestor).
+    final cubit = context.read<SubscriptionListCubit>();
+
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -61,13 +88,11 @@ class _HomePageState extends State<HomePage> {
     // null = dismissed by tapping outside, false = Cancel.
     if (confirmed != true) return;
 
-    try {
-      await widget.repository.delete(item.id);
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not delete: $e')));
-    }
+    // Hand off to the Cubit. No try/catch and no snackbar code here:
+    // the Cubit reports failures through its state, and the BlocListener
+    // in build() shows them. No list update here either: the database
+    // stream removes the card.
+    await cubit.delete(item.id);
   }
 
   @override
@@ -94,72 +119,97 @@ class _HomePageState extends State<HomePage> {
         icon: const Icon(Icons.add),
         onPressed: () => Navigator.of(context).push(
           MaterialPageRoute(
-            // Pass the same repository down (constructor injection).
-            builder: (_) => SubscriptionFormPage(repository: widget.repository),
+            // The form finds the repository in the tree (RepositoryProvider
+            // sits above MaterialApp). No "reload" after it closes: the
+            // Cubit's database stream picks up the new row by itself.
+            builder: (_) => const SubscriptionFormPage(),
           ),
-          // No `await` + "reload" here: the list updates through its stream.
         ),
       ),
-      // StreamBuilder listens to the Drift stream and calls `builder` again
-      // on every emission: first the initial rows, then after every change
-      // to the `subscriptions` table. No manual "refresh" is ever needed.
-      body: StreamBuilder<List<Subscription>>(
-        stream: _subscriptions,
-        builder: (context, snapshot) {
-          // 1. ERROR: the query failed (e.g. corrupt file, bad migration).
-          if (snapshot.hasError) {
-            return _CenteredMessage(
-              icon: Icons.error_outline,
-              text: 'Could not load subscriptions\n${snapshot.error}',
-            );
-          }
+      // BlocListener vs BlocBuilder:
+      //   • BlocListener → runs `listener` ONCE per new state, for one-off
+      //     actions (snackbar, navigation). It draws nothing.
+      //   • BlocBuilder  → rebuilds UI from the state.
+      body: BlocListener<SubscriptionListCubit, SubscriptionListState>(
+        // Only react to ACTION errors (e.g. delete failed) while the list is
+        // showing. A load failure has its own full-screen message instead.
+        listenWhen: (previous, current) =>
+            current.status == SubscriptionListStatus.success &&
+            current.errorMessage != null,
+        listener: (context, state) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text(state.errorMessage!)));
+        },
+        child: _buildList(),
+      ),
+    );
+  }
 
-          // 2. LOADING: the first emission hasn't arrived yet. On a local
-          //    database this usually lasts only a few milliseconds.
-          if (!snapshot.hasData) {
-            return const Center(child: CircularProgressIndicator());
-          }
-
-          final items = snapshot.data!;
-
-          // 3. EMPTY: query worked, table has no rows.
-          if (items.isEmpty) {
-            return const _CenteredMessage(
+  /// READ: BlocBuilder rebuilds this part every time the Cubit emits a new
+  /// state. The View has no logic about WHERE data comes from — it just
+  /// draws the state it's given.
+  Widget _buildList() {
+    return BlocBuilder<SubscriptionListCubit, SubscriptionListState>(
+      // Skip rebuilds when only the one-off error message changed — the
+      // list itself looks the same.
+      buildWhen: (previous, current) =>
+          previous.status != current.status || previous.items != current.items,
+      builder: (context, state) {
+        // A Dart 3 `switch` expression: one case per status, and the
+        // compiler checks that every status is handled.
+        return switch (state.status) {
+          SubscriptionListStatus.loading => const Center(
+            child: CircularProgressIndicator(),
+          ),
+          SubscriptionListStatus.failure => _CenteredMessage(
+            icon: Icons.error_outline,
+            text: state.errorMessage ?? 'Could not load subscriptions',
+          ),
+          SubscriptionListStatus.success when state.items.isEmpty =>
+            const _CenteredMessage(
               icon: Icons.subscriptions_outlined,
               text:
                   'No subscriptions yet\nTap "Create subscription" to add one',
-            );
-          }
+            ),
+          SubscriptionListStatus.success => _SubscriptionList(
+            items: state.items,
+            onDelete: _confirmAndDelete,
+          ),
+        };
+      },
+    );
+  }
+}
 
-          // 4. DATA: one card per row. `builder` only builds visible cards.
-          return ListView.builder(
-            // Extra bottom space so the FAB doesn't cover the last card.
-            padding: const EdgeInsets.only(bottom: 88.0),
-            itemCount: items.length,
-            itemBuilder: (context, index) {
-              final item = items[index];
-              // ValueKey(id) lets Flutter match each card to its row when the
-              // list changes (e.g. after a delete in Step 4).
-              return SubscriptionCard(
-                key: ValueKey(item.id),
-                item: item,
-                // UPDATE: open the same form, pre-filled with this item.
-                // After saving, watchAll() re-emits and this card redraws
-                // with the new values — same mechanism as create/delete.
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => SubscriptionFormPage(
-                      repository: widget.repository,
-                      initial: item,
-                    ),
-                  ),
-                ),
-                onDelete: () => _confirmAndDelete(item),
-              );
-            },
-          );
-        },
-      ),
+/// The list of cards (success state with items).
+class _SubscriptionList extends StatelessWidget {
+  const _SubscriptionList({required this.items, required this.onDelete});
+
+  final List<Subscription> items;
+  final void Function(Subscription item) onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.builder(
+      // Extra bottom space so the FAB doesn't cover the last card.
+      padding: const EdgeInsets.only(bottom: 88.0),
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        // ValueKey(id) lets Flutter match each card to its row when the
+        // list changes (e.g. after a delete).
+        return SubscriptionCard(
+          key: ValueKey(item.id),
+          item: item,
+          // UPDATE: open the same form, pre-filled with this item.
+          onTap: () => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => SubscriptionFormPage(initial: item),
+            ),
+          ),
+          onDelete: () => onDelete(item),
+        );
+      },
     );
   }
 }

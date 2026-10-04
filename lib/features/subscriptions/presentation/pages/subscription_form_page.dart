@@ -1,38 +1,52 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
 import 'package:offline_first_app_flutter_demo/core/utils/form_validators.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_form/subscription_form_cubit.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_form/subscription_form_state.dart';
 import 'package:offline_first_app_flutter_demo/shared/widgets/app_date_field.dart';
 import 'package:offline_first_app_flutter_demo/shared/widgets/app_dropdown_field.dart';
 import 'package:offline_first_app_flutter_demo/shared/widgets/app_primary_button.dart';
 import 'package:offline_first_app_flutter_demo/shared/widgets/app_text_field.dart';
 
-/// One form for both CREATE and UPDATE.
+/// One form for both CREATE and UPDATE — PAGE part: wiring only.
 ///
-///   SubscriptionFormPage(repository: r)              → create mode
-///   SubscriptionFormPage(repository: r, initial: s)  → edit mode, pre-filled
+///   SubscriptionFormPage()            → create mode
+///   SubscriptionFormPage(initial: s)  → edit mode, pre-filled
 ///
-/// Save writes to the local database through [repository].
-class SubscriptionFormPage extends StatefulWidget {
-  const SubscriptionFormPage({
-    super.key,
-    required this.repository,
-    this.initial,
-  });
-
-  /// Injected by the HomePage (same instance created in main.dart).
-  final SubscriptionRepository repository;
+/// Creates a fresh [SubscriptionFormCubit] for this screen; BlocProvider
+/// closes it when the page is popped.
+class SubscriptionFormPage extends StatelessWidget {
+  const SubscriptionFormPage({super.key, this.initial});
 
   /// The subscription being edited, or null when creating a new one.
   final Subscription? initial;
 
   @override
-  State<SubscriptionFormPage> createState() => _SubscriptionFormPageState();
+  Widget build(BuildContext context) {
+    return BlocProvider(
+      create: (context) => SubscriptionFormCubit(
+        context.read<SubscriptionRepository>(),
+        initial: initial,
+      ),
+      child: const SubscriptionFormView(),
+    );
+  }
 }
 
-class _SubscriptionFormPageState extends State<SubscriptionFormPage> {
+/// VIEW part: owns the field values (controllers, dropdown/date values) and
+/// Flutter's Form validation. Saving is delegated to the Cubit.
+class SubscriptionFormView extends StatefulWidget {
+  const SubscriptionFormView({super.key});
+
+  @override
+  State<SubscriptionFormView> createState() => _SubscriptionFormViewState();
+}
+
+class _SubscriptionFormViewState extends State<SubscriptionFormView> {
   static const _defaultCategories = [
     'Entertainment',
     'Music',
@@ -53,23 +67,38 @@ class _SubscriptionFormPageState extends State<SubscriptionFormPage> {
 
   final _formKey = GlobalKey<FormState>();
 
-  // Pre-filled from `initial` in edit mode, empty in create mode.
-  late final _nameController = TextEditingController(
-    text: widget.initial?.name,
-  );
-  late final _priceController = TextEditingController(
-    text: widget.initial == null ? null : _formatPrice(widget.initial!.price),
-  );
-  late String? _category = widget.initial?.category;
-  late BillingCycles? _billingCycle =
-      widget.initial?.billingCycle ?? BillingCycles.monthly;
-  late DateTime? _dueDate = widget.initial?.dueDate;
+  // Field values. Pre-filled from the Cubit's `initial` in edit mode.
+  late final Subscription? _initial;
+  late final TextEditingController _nameController;
+  late final TextEditingController _priceController;
+  String? _category;
+  BillingCycles? _billingCycle;
+  DateTime? _dueDate;
 
-  /// True while the database write is running: shows a spinner on the
-  /// button and blocks double taps (which would insert two rows).
-  bool _isSaving = false;
+  bool get _isEditing => _initial != null;
 
-  bool get _isEditing => widget.initial != null;
+  @override
+  void initState() {
+    super.initState();
+    // The subscription being edited lives in the Cubit (one source of
+    // truth). `read` is fine here: initState runs once, outside build.
+    _initial = context.read<SubscriptionFormCubit>().initial;
+
+    _nameController = TextEditingController(text: _initial?.name);
+    _priceController = TextEditingController(
+      text: _initial == null ? null : _formatPrice(_initial.price),
+    );
+    _category = _initial?.category;
+    _billingCycle = _initial?.billingCycle ?? BillingCycles.monthly;
+    _dueDate = _initial?.dueDate;
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _priceController.dispose();
+    super.dispose();
+  }
 
   /// A category saved earlier may not be in today's list; the dropdown would
   /// crash on a value it doesn't contain, so make sure it's included.
@@ -84,73 +113,30 @@ class _SubscriptionFormPageState extends State<SubscriptionFormPage> {
       ? price.toInt().toString()
       : price.toStringAsFixed(2);
 
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _priceController.dispose();
-    super.dispose();
-  }
-
   /// In edit mode an old subscription may already be overdue. Re-validating
   /// that unchanged date as "not in the past" would block every other edit
   /// (e.g. fixing a typo in the name), so the rule only applies to a date
   /// the user actually picked.
   String? _validateDueDate(DateTime? value) {
-    final isUnchanged = _isEditing && value == widget.initial!.dueDate;
+    final isUnchanged = _isEditing && value == _initial!.dueDate;
     if (isUnchanged) return null;
     return FormValidators.notPastDate(value, fieldName: 'Due date');
   }
 
-  Future<void> _onSubmit() async {
-    // 1. Validate. Every field must pass before we touch the database.
+  /// Validate here (UI concern), then hand the values to the Cubit.
+  /// No try/catch, no Navigator, no setState: the Cubit reports the outcome
+  /// through its state, and the BlocListener in build() reacts to it.
+  void _onSubmit() {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isSaving = true);
-
     // The `!` are safe because the validators above guarantee values.
-    final name = _nameController.text.trim();
-    final price = double.parse(_priceController.text);
-
-    try {
-      // 2. Write to SQLite. No network: works the same in airplane mode.
-      if (_isEditing) {
-        // UPDATE: same id as before → the DAO changes that row.
-        await widget.repository.update(
-          Subscription(
-            id: widget.initial!.id,
-            name: name,
-            billingCycle: _billingCycle!,
-            dueDate: _dueDate!,
-            category: _category!,
-            price: price,
-          ),
-        );
-      } else {
-        // CREATE: no id → the table generates one.
-        await widget.repository.create(
-          name: name,
-          billingCycle: _billingCycle!,
-          dueDate: _dueDate!,
-          category: _category!,
-          price: price,
-        );
-      }
-
-      // 3. The page may have been closed while we awaited; using its
-      //    context after that would crash, so check `mounted` first.
-      if (!mounted) return;
-
-      // 4. Go back. Note: we DON'T tell the home page to refresh — its
-      //    watchAll() stream already emitted the new list after the write.
-      Navigator.of(context).pop();
-    } catch (e) {
-      // Rare for a local DB (e.g. disk full, row deleted meanwhile), but
-      // never fail silently.
-      if (!mounted) return;
-      setState(() => _isSaving = false);
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Could not save: $e')));
-    }
+    context.read<SubscriptionFormCubit>().save(
+      name: _nameController.text.trim(),
+      billingCycle: _billingCycle!,
+      dueDate: _dueDate!,
+      category: _category!,
+      price: double.parse(_priceController.text),
+    );
   }
 
   @override
@@ -158,85 +144,111 @@ class _SubscriptionFormPageState extends State<SubscriptionFormPage> {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(_isEditing ? 'Edit subscription' : 'New subscription'),
-      ),
-      body: SafeArea(
-        child: Form(
-          key: _formKey,
-          // After the first interaction, errors update as the user types.
-          autovalidateMode: AutovalidateMode.onUserInteraction,
-          child: ListView(
-            padding: const EdgeInsets.all(16.0),
-            children: [
-              Column(
-                spacing: 20.0,
-                children: [
-                  AppTextField(
-                    label: 'Name',
-                    hint: 'e.g. Netflix',
-                    prefixIcon: Icons.subscriptions_outlined,
-                    controller: _nameController,
-                    textCapitalization: TextCapitalization.words,
-                    validator: (value) =>
-                        FormValidators.required(value, fieldName: 'Name'),
-                  ),
-                  AppTextField(
-                    label: 'Price',
-                    hint: '0.00',
-                    prefixIcon: Icons.attach_money,
-                    controller: _priceController,
-                    keyboardType: const TextInputType.numberWithOptions(
-                      decimal: true,
+    // BlocListener: one-off reactions to the save outcome.
+    return BlocListener<SubscriptionFormCubit, SubscriptionFormState>(
+      // Only success/failure need a reaction (not idle/saving).
+      listenWhen: (previous, current) =>
+          current.status == SubscriptionFormStatus.success ||
+          current.status == SubscriptionFormStatus.failure,
+      listener: (context, state) {
+        if (state.status == SubscriptionFormStatus.success) {
+          // Saved → go back. The home list already shows the change: its
+          // own Cubit listens to the database.
+          Navigator.of(context).pop();
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(state.errorMessage ?? 'Could not save')),
+          );
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(_isEditing ? 'Edit subscription' : 'New subscription'),
+        ),
+        body: SafeArea(
+          child: Form(
+            key: _formKey,
+            // After the first interaction, errors update as the user types.
+            autovalidateMode: AutovalidateMode.onUserInteraction,
+            child: ListView(
+              padding: const EdgeInsets.all(16.0),
+              children: [
+                Column(
+                  spacing: 20.0,
+                  children: [
+                    AppTextField(
+                      label: 'Name',
+                      hint: 'e.g. Netflix',
+                      prefixIcon: Icons.subscriptions_outlined,
+                      controller: _nameController,
+                      textCapitalization: TextCapitalization.words,
+                      validator: (value) =>
+                          FormValidators.required(value, fieldName: 'Name'),
                     ),
-                    inputFormatters: [_priceFormatter],
-                    validator: FormValidators.price,
-                  ),
-                  AppDropdownField<String>(
-                    label: 'Category',
-                    hint: 'Select category',
-                    prefixIcon: Icons.category_outlined,
-                    items: _categories,
-                    itemLabel: (item) => item,
-                    value: _category,
-                    onChanged: (value) => setState(() => _category = value),
-                    validator: (value) =>
-                        FormValidators.required(value, fieldName: 'Category'),
-                  ),
-                  AppDropdownField<BillingCycles>(
-                    label: 'Billing cycle',
-                    hint: 'Select billing cycle',
-                    prefixIcon: Icons.autorenew,
-                    items: BillingCycles.values,
-                    itemLabel: (item) => item.label,
-                    value: _billingCycle,
-                    onChanged: (value) => setState(() => _billingCycle = value),
-                    validator: (value) => FormValidators.required(
-                      value,
-                      fieldName: 'Billing cycle',
+                    AppTextField(
+                      label: 'Price',
+                      hint: '0.00',
+                      prefixIcon: Icons.attach_money,
+                      controller: _priceController,
+                      keyboardType: const TextInputType.numberWithOptions(
+                        decimal: true,
+                      ),
+                      inputFormatters: [_priceFormatter],
+                      validator: FormValidators.price,
                     ),
+                    AppDropdownField<String>(
+                      label: 'Category',
+                      hint: 'Select category',
+                      prefixIcon: Icons.category_outlined,
+                      items: _categories,
+                      itemLabel: (item) => item,
+                      value: _category,
+                      onChanged: (value) => setState(() => _category = value),
+                      validator: (value) =>
+                          FormValidators.required(value, fieldName: 'Category'),
+                    ),
+                    AppDropdownField<BillingCycles>(
+                      label: 'Billing cycle',
+                      hint: 'Select billing cycle',
+                      prefixIcon: Icons.autorenew,
+                      items: BillingCycles.values,
+                      itemLabel: (item) => item.label,
+                      value: _billingCycle,
+                      onChanged: (value) =>
+                          setState(() => _billingCycle = value),
+                      validator: (value) => FormValidators.required(
+                        value,
+                        fieldName: 'Billing cycle',
+                      ),
+                    ),
+                    AppDateField(
+                      label: 'Next due date',
+                      value: _dueDate,
+                      // Past days are greyed out in the picker...
+                      firstDate: today,
+                      onChanged: (date) => setState(() => _dueDate = date),
+                      // ...and still rejected here in case "today" rolls
+                      // over while the form is open (unless unchanged in
+                      // edit mode).
+                      validator: _validateDueDate,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 32.0),
+                // BlocBuilder: only the button depends on the Cubit's state
+                // (spinner while saving), so only the button rebuilds.
+                BlocBuilder<SubscriptionFormCubit, SubscriptionFormState>(
+                  buildWhen: (previous, current) =>
+                      previous.isSaving != current.isSaving,
+                  builder: (context, state) => AppPrimaryButton(
+                    label: _isEditing ? 'Save changes' : 'Save subscription',
+                    icon: Icons.check,
+                    isLoading: state.isSaving,
+                    onPressed: _onSubmit,
                   ),
-                  AppDateField(
-                    label: 'Next due date',
-                    value: _dueDate,
-                    // Past days are greyed out in the picker...
-                    firstDate: today,
-                    onChanged: (date) => setState(() => _dueDate = date),
-                    // ...and still rejected here in case "today" rolls over
-                    // while the form is open (unless unchanged in edit mode).
-                    validator: _validateDueDate,
-                  ),
-                ],
-              ),
-              const SizedBox(height: 32.0),
-              AppPrimaryButton(
-                label: _isEditing ? 'Save changes' : 'Save subscription',
-                icon: Icons.check,
-                isLoading: _isSaving,
-                onPressed: _onSubmit,
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),

@@ -3,10 +3,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
 
+import 'helpers/test_app.dart';
 import 'helpers/test_database.dart';
 
 class _SilentNetworkInfo implements NetworkInfo {
@@ -31,12 +31,7 @@ void main() {
   testWidgets('Home → form → Save → new card appears on Home', (tester) async {
     useTallScreen(tester);
     await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          repository: db.subscriptionRepository,
-          networkInfo: _SilentNetworkInfo(),
-        ),
-      ),
+      testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
     );
     await tester.pumpAndSettle();
     expect(find.textContaining('No subscriptions yet'), findsOneWidget);
@@ -73,12 +68,7 @@ void main() {
   testWidgets('invalid form does not write to the database', (tester) async {
     useTallScreen(tester);
     await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          repository: db.subscriptionRepository,
-          networkInfo: _SilentNetworkInfo(),
-        ),
-      ),
+      testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create subscription'));
@@ -110,12 +100,7 @@ void main() {
         ),
       );
       await tester.pumpWidget(
-        MaterialApp(
-          home: HomePage(
-            repository: db.subscriptionRepository,
-            networkInfo: _SilentNetworkInfo(),
-          ),
-        ),
+        testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
       );
       await tester.pumpAndSettle();
 
@@ -161,6 +146,30 @@ void main() {
 
       expect(find.textContaining('cannot be in the past'), findsNothing);
       expect(find.text('Netflix 4K'), findsOneWidget);
+    });
+
+    testWidgets('failed save stays on the form and shows a snackbar', (
+      tester,
+    ) async {
+      await openEditFormFor(
+        tester,
+        dueDate: DateTime.now().add(const Duration(days: 10)),
+      );
+
+      // Someone deletes the row while the edit form is open
+      // (e.g. later: the sync engine applying a server deletion).
+      final id = (await tester.runAsync(
+        () => db.select(db.subscriptions).get(),
+      ))!.single.id;
+      await tester.runAsync(() => db.subscriptionsDao.softDelete(id));
+
+      await tester.tap(find.text('Save changes'));
+      await tester.pumpAndSettle();
+
+      // Cubit emitted failure → BlocListener showed a snackbar, no pop.
+      expect(find.text('Edit subscription'), findsOneWidget);
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.textContaining('Could not save'), findsOneWidget);
     });
   });
 }
