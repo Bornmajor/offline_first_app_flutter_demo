@@ -1,12 +1,11 @@
 import 'dart:async';
 
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
 
+import 'helpers/test_app.dart';
 import 'helpers/test_database.dart';
 
 /// Lets the test push network statuses manually.
@@ -26,12 +25,7 @@ void main() {
 
     final networkInfo = FakeNetworkInfo();
     await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          repository: db.subscriptionRepository,
-          networkInfo: networkInfo,
-        ),
-      ),
+      testApp(db, home: HomePage(networkInfo: networkInfo)),
     );
 
     // Unknown at startup: nothing shown.

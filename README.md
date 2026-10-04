@@ -7,15 +7,67 @@ optimization, and synchronization happens in the background.
 ## Documentation
 
 - [Tech Stack](docs/tech-stack.md) — recommended offline-first stack (Riverpod, Dio, Drift, Freezed, connectivity_plus, workmanager, flutter_secure_storage, talker) with architecture diagrams and usage notes.
+- [Offline-First Concepts](docs/offline-first-concepts.md) — the ideas behind this app (local source of truth, reactive reads, UUIDs, soft delete, migrations, repository mapping, DI, state management), each with a one-sentence summary and where it lives in the code.
 
 ## Learning roadmap
 
 | Part | Topic | Status |
 | --- | --- | --- |
 | 1 | Why Drift for offline-first | ✅ |
-| 2 | **Interacting with the local database — CRUD with Drift + UI** | ✅ this branch |
-| 3 | State management (Bloc) on top of the same data layer | ⏳ |
+| 2 | [Interacting with the local database — CRUD with Drift + UI](#part-2--interacting-with-the-local-database-drift) | ✅ |
+| 3 | [State management with Cubit on top of the same data layer](#part-3--state-management-with-cubit) | ✅ |
 | 4 | Offline sync mechanism (push/pull with a server) | ⏳ |
+
+## Architecture
+
+```
+ View (widgets)               draws state, sends user actions
+        │ cubit.save(…) / cubit.delete(id)      ▲ BlocBuilder / BlocListener
+        ▼                                       │ states
+ Cubits                       SubscriptionListCubit · SubscriptionFormCubit
+        │ calls                                 ▲ Stream<List<Subscription>>
+        ▼                                       │
+ SubscriptionRepository       maps Drift rows ⇄ domain entities
+        │                                       ▲
+        ▼                                       │
+ SubscriptionsDao             all SQL for the table (Drift query builder)
+        │                                       ▲ .watch() re-emits on every change
+        ▼                                       │
+ AppDatabase → SQLite file    source of truth
+```
+
+**Core idea:** everything *writes* to the database; nothing tells anything
+else to refresh. `SubscriptionListCubit` listens to `watchAll()`, a Drift
+stream that re-emits whenever the `subscriptions` table changes — whoever
+changed it (the form, a delete, and later the sync engine).
+
+## Project structure
+
+```
+lib/
+├── main.dart                          # Composition root: one AppDatabase + RepositoryProvider
+├── core/
+│   ├── database/app_database.dart     # Drift database, schemaVersion, migrations
+│   ├── enums/billing_cycles.dart
+│   ├── network/                       # online/offline indicator
+│   └── utils/                         # date formatting, form validators
+├── shared/widgets/                    # reusable form widgets (text, dropdown, date, button)
+└── features/subscriptions/
+    ├── data/
+    │   ├── local/subscriptions_table.dart     # table definition
+    │   ├── local/subscriptions_dao.dart       # CRUD queries
+    │   ├── mappers/subscription_mapper.dart   # SubscriptionRow ⇄ Subscription
+    │   └── subscription_repository.dart       # the only data API the app uses
+    ├── domain/entities/subscription.dart
+    └── presentation/
+        ├── cubits/
+        │   ├── subscription_list/             # READ + DELETE (home)
+        │   └── subscription_form/             # CREATE + UPDATE (form)
+        ├── pages/
+        │   ├── home_page.dart                 # HomePage (provides cubit) + HomeView (draws)
+        │   └── subscription_form_page.dart    # SubscriptionFormPage + SubscriptionFormView
+        └── widgets/
+```
 
 ---
 
@@ -23,8 +75,7 @@ optimization, and synchronization happens in the background.
 
 **Goal:** the app stores subscriptions in a local SQLite database and
 supports full **CRUD** — create, read, update, delete — entirely offline,
-with the UI updating automatically after every change. No state-management
-library and no server yet: just Drift and Flutter.
+with the UI updating automatically after every change.
 
 ### What the app does
 
@@ -36,49 +87,6 @@ library and no server yet: just Drift and Flutter.
 | **Delete** | *Delete* on a card → confirm | Soft delete: `UPDATE … SET is_deleted = 1` (kept for future sync) |
 
 Data survives app restarts and works in airplane mode.
-
-### Architecture
-
-```
- UI (pages / widgets)         knows only: Subscription (domain entity)
-        │  calls                 ▲ Stream<List<Subscription>>
-        ▼                        │
- SubscriptionRepository       maps Drift rows ⇄ entities
-        │                        ▲
-        ▼                        │
- SubscriptionsDao             all SQL for the table (Drift query builder)
-        │                        ▲ .watch() re-emits on every table change
-        ▼                        │
- AppDatabase → SQLite file    source of truth
-```
-
-**Core idea:** screens only *write* to the database; they never tell each
-other to refresh. The home page listens to `watchAll()`, a Drift stream that
-re-emits whenever the `subscriptions` table changes — whoever changed it.
-
-### Project structure
-
-```
-lib/
-├── main.dart                              # Composition root: one AppDatabase, injected down
-├── core/
-│   ├── database/app_database.dart         # Drift database, schemaVersion, migrations
-│   ├── enums/billing_cycles.dart
-│   ├── network/                           # online/offline indicator
-│   └── utils/                             # date formatting, form validators
-├── shared/widgets/                        # reusable form widgets (text, dropdown, date, button)
-└── features/subscriptions/
-    ├── data/
-    │   ├── local/subscriptions_table.dart # table definition
-    │   ├── local/subscriptions_dao.dart   # CRUD queries
-    │   ├── mappers/subscription_mapper.dart  # SubscriptionRow ⇄ Subscription
-    │   └── subscription_repository.dart  # the only API the UI uses
-    ├── domain/entities/subscription.dart
-    └── presentation/
-        ├── pages/home_page.dart           # live list, delete, open edit
-        ├── pages/subscription_form_page.dart  # create + edit
-        └── widgets/
-```
 
 ### Drift CRUD cheat sheet
 
@@ -98,10 +106,76 @@ Key concepts:
   tell the server about deletions.
 - **Migrations** — `schemaVersion` is stored in the SQLite file. v1 → v2 added
   `is_deleted` with `m.addColumn(...)`; existing rows are kept.
-- **Dependency injection** — `main()` creates one `AppDatabase` and passes the
-  repository down through constructors, so tests can inject an in-memory DB.
 
-### Running
+---
+
+## Part 3 — State management with Cubit
+
+**Goal:** move the screens' logic (listening to data, saving, deleting,
+loading and error handling) out of the widgets into Cubits, so widgets only
+*draw state* and *send actions*. The data layer from Part 2 is unchanged.
+
+Packages: `flutter_bloc` (Cubit, BlocProvider, BlocBuilder, BlocListener,
+RepositoryProvider), `equatable` (state equality), `bloc_test` (dev).
+
+### Who does what
+
+| Layer | Responsibility |
+| --- | --- |
+| **Page** (`HomePage`, `SubscriptionFormPage`) | Creates the screen's Cubit with `BlocProvider`, reading the repository from `RepositoryProvider` |
+| **View** (`HomeView`, `SubscriptionFormView`) | Draws state, shows dialogs, holds form field values and validation, calls Cubit methods |
+| **Cubit** | Logic: listens to the database, saves, deletes, emits states |
+| **Repository** | Data access (Part 2) |
+
+### The two Cubits
+
+| Cubit | Screen | Operations | States |
+| --- | --- | --- | --- |
+| `SubscriptionListCubit` | Home | Read (`watchSubscriptions`), Delete (`delete`) | `loading` → `success` (items) / `failure` |
+| `SubscriptionFormCubit` | Form | Create + Update (`save`) | `idle` → `saving` → `success` / `failure` |
+
+### Dependency injection
+
+`main()` creates one `AppDatabase` and puts its repository in the widget tree
+**above `MaterialApp`**, so every page — including pushed routes — can read it:
+
+```dart
+RepositoryProvider<SubscriptionRepository>.value(
+  value: db.subscriptionRepository,
+  child: const MyApp(),
+);
+
+// In a Page:
+BlocProvider(
+  create: (context) =>
+      SubscriptionListCubit(context.read<SubscriptionRepository>())
+        ..watchSubscriptions(),
+  child: const HomeView(),
+);
+```
+
+`BlocProvider` closes the Cubit when the page is removed (the list Cubit
+cancels its database stream in `close()`).
+
+### Key concepts
+
+- **State is immutable** — Cubits build the next state with `copyWith` and
+  `emit` it; `Equatable` compares states by value.
+- **Equal states are skipped** — Cubit doesn't emit a state equal to the
+  current one. That's why the list Cubit clears a delete error right after
+  reporting it (otherwise a second identical failure would be silent).
+- **`BlocBuilder` vs `BlocListener`** — builder *draws* UI from state;
+  listener runs *one-off* actions (snackbar, closing the page).
+  `buildWhen` / `listenWhen` filter which states each reacts to.
+- **One source of truth** — `delete()` and `save()` never edit the list in
+  memory; the database changes, `watchAll()` re-emits, the list Cubit emits.
+- **Double-tap guard in the Cubit** — `save()` ignores calls while saving.
+- **`context.read` rules** — never inside `build()` (use it in callbacks or
+  `initState`), and read before any `await`.
+
+---
+
+## Running
 
 ```sh
 flutter pub get
@@ -112,19 +186,24 @@ flutter run
 > Windows: building with plugins requires Developer Mode
 > (`start ms-settings:developers`).
 
-### Tests
+## Tests
 
 ```sh
 flutter test
 ```
 
-Tests run against a real in-memory SQLite database (`test/helpers/test_database.dart`):
+Tests run against a real in-memory SQLite database
+(`test/helpers/test_database.dart`); widget tests wrap pages with
+`testApp()` (`test/helpers/test_app.dart`), which provides the repository
+the same way `main.dart` does.
 
 | File | Covers |
 | --- | --- |
+| `cubits/subscription_list_cubit_test.dart` | Loading → success/failure, live updates, delete via the stream, delete errors reported once each |
+| `cubits/subscription_form_cubit_test.dart` | Create/update emit saving → success/failure, double-tap guard, retry after failure |
 | `subscription_repository_test.dart` | Each CRUD operation; live stream re-emits; soft delete keeps the row |
 | `database_migration_test.dart` | Upgrading a real v1 database to v2 keeps existing data |
-| `home_page_list_test.dart` | Empty state, live list, delete with confirm/cancel |
-| `subscription_form_flow_test.dart` | Create and edit through the real form |
+| `home_page_list_test.dart` | Empty state, live list, delete with confirm/cancel, failed-delete snackbar |
+| `subscription_form_flow_test.dart` | Create and edit through the real form, failed-save snackbar |
 | `home_page_network_status_test.dart` | Online/offline indicator |
 | `form_validators_test.dart` | Form validation rules |

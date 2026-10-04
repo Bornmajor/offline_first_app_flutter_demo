@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
@@ -9,6 +10,7 @@ import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subsc
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
 
+import 'helpers/test_app.dart';
 import 'helpers/test_database.dart';
 
 /// Network never reports, so the test focuses on the list only.
@@ -25,12 +27,7 @@ void main() {
 
   Future<void> pumpHome(WidgetTester tester) async {
     await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          repository: db.subscriptionRepository,
-          networkInfo: _SilentNetworkInfo(),
-        ),
-      ),
+      testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
     );
     // Let the first Drift emission arrive and render.
     await tester.pump();
@@ -108,5 +105,42 @@ void main() {
       final row = (await db.select(db.subscriptions).get()).single;
       expect(row.isDeleted, isTrue);
     });
+
+    testWidgets('a failed delete keeps the card and shows a snackbar', (
+      tester,
+    ) async {
+      await tester.runAsync(
+        () => insertTestSubscription(
+          db,
+          name: 'Netflix',
+          dueDate: DateTime.now().add(const Duration(days: 10)),
+        ),
+      );
+      // Real reads from the test db, but delete always fails.
+      await tester.pumpWidget(
+        RepositoryProvider<SubscriptionRepository>.value(
+          value: _DeleteFailsRepository(db.subscriptionsDao),
+          child: MaterialApp(home: HomePage(networkInfo: _SilentNetworkInfo())),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('Delete'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Delete').last); // confirm in dialog
+      await tester.pumpAndSettle();
+
+      expect(find.byType(SnackBar), findsOneWidget);
+      expect(find.text('Could not delete: locked'), findsOneWidget);
+      expect(find.byType(SubscriptionCard), findsOneWidget);
+    });
   });
+}
+
+/// Reads like the real repository (extends it), but delete always fails.
+class _DeleteFailsRepository extends SubscriptionRepository {
+  _DeleteFailsRepository(super.dao);
+
+  @override
+  Future<void> delete(String id) async => throw 'locked';
 }
