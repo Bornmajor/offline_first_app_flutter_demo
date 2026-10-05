@@ -1,0 +1,10 @@
+targets:
+  $default:
+    builders:
+      drift_dev:
+        options:
+          # Store DateTime columns as ISO-8601 text WITH milliseconds instead
+          # of whole Unix seconds. Sync needs the precision: last-write-wins
+          # compares updatedAt with the server (which keeps milliseconds),
+          # and two edits within the same second must stay distinguishable.
+          store_date_time_values_as_text: true

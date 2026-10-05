@@ -28,15 +28,30 @@ class Subscriptions extends Table {
 
   RealColumn get price => real()();
 
-  /// Added in schema version 2 (Step 4).
-  ///
-  /// SOFT delete flag: "deleting" sets this to true instead of removing the
-  /// row. Reads filter it out, so the user sees it gone — but the row stays
-  /// in SQLite so the sync engine (Part 4) can later tell the server
+  // ─── Sync metadata ─────────────────────────────────────────
+  // Columns the user never sees; the sync engine uses them to decide what
+  // to push, and how to resolve conflicts with the server.
+
+  /// SOFT delete flag (a tombstone): "deleting" sets this to true instead of
+  /// removing the row. Reads filter it out, so the user sees it gone — but
+  /// the row stays in SQLite so the sync engine can tell the server
   /// "this was deleted". A hard DELETE would leave nothing to sync.
-  ///
-  /// `withDefault` matters for the migration: existing rows get `false`.
   BoolColumn get isDeleted => boolean().withDefault(const Constant(false))();
+
+  /// WHEN this record last changed on this device (the device's clock).
+  ///
+  /// Sent to the server as `updatedAt`; the server compares it for
+  /// last-write-wins. Every local write sets it to "now". `clientDefault`
+  /// fills it in for inserts that don't set it.
+  DateTimeColumn get updatedAt => dateTime().clientDefault(DateTime.now)();
+
+  /// Does the server already have this exact version?
+  ///
+  ///   false → a local change is waiting to be pushed (new, edited, deleted)
+  ///   true  → in sync with the server
+  ///
+  /// Every local write sets it to false; a successful push sets it to true.
+  BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
 
   /// Tells Drift that `id` is the primary key (instead of an auto-increment).
   @override

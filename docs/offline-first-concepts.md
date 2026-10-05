@@ -121,7 +121,7 @@ place, the DAO), and tombstones accumulate until they are cleaned up after
 sync.
 
 **In the code:**
-- `Subscriptions.isDeleted` column (added in schema v2)
+- `Subscriptions.isDeleted` column
 - `SubscriptionsDao.softDelete()` sets the flag
 - `SubscriptionsDao.watchAll()` filters it out
 - `SubscriptionsDao.updateSubscription()` only matches non-deleted rows, so an
@@ -153,8 +153,20 @@ with `schemaVersion`:
 
 Rules: never edit an old upgrade step; always add a new one; test it.
 
-**In the code:** `AppDatabase.migration` (v1 → v2 adds `is_deleted`), tested by
-`test/database_migration_test.dart` against a real v1 database.
+**Migration vs. reset:** a migration *upgrades* the existing file and keeps
+its data; a reset *deletes* the file and starts over. Online apps can often
+reset (the local data is just a cache), but an offline-first app's local
+database may hold changes that never reached the server, so released
+offline-first apps migrate.
+
+**Before the first release it's fine to squash:** with no real users, the
+history of versions can be folded into one clean v1 (dev devices uninstall
+the app once). Migrations become mandatory from the first release on.
+
+**In the code:** `AppDatabase.schemaVersion` is `1` and `migration` has only
+`onCreate`. During Part 2 the app had a real v1 → v2 migration (`addColumn`
+for `is_deleted`, with a test against a real v1 database); in Part 4 the
+schema was squashed to v1 before adding the sync columns.
 
 ---
 

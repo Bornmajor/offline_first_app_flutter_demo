@@ -104,8 +104,10 @@ Key concepts:
 - **`.get()` vs `.watch()`** — read once vs. a live stream.
 - **Soft delete** — rows are flagged, not removed, so a future sync engine can
   tell the server about deletions.
-- **Migrations** — `schemaVersion` is stored in the SQLite file. v1 → v2 added
-  `is_deleted` with `m.addColumn(...)`; existing rows are kept.
+- **Migrations** — `schemaVersion` is stored in the SQLite file. In Part 2,
+  v1 → v2 added `is_deleted` with `m.addColumn(...)`, keeping existing rows.
+  Before Part 4 the schema was squashed back to a clean v1 (no released
+  users yet); see [Offline-First Concepts](docs/offline-first-concepts.md#5-schema-migrations).
 
 ---
 
@@ -202,7 +204,6 @@ the same way `main.dart` does.
 | `cubits/subscription_list_cubit_test.dart` | Loading → success/failure, live updates, delete via the stream, delete errors reported once each |
 | `cubits/subscription_form_cubit_test.dart` | Create/update emit saving → success/failure, double-tap guard, retry after failure |
 | `subscription_repository_test.dart` | Each CRUD operation; live stream re-emits; soft delete keeps the row |
-| `database_migration_test.dart` | Upgrading a real v1 database to v2 keeps existing data |
 | `home_page_list_test.dart` | Empty state, live list, delete with confirm/cancel, failed-delete snackbar |
 | `subscription_form_flow_test.dart` | Create and edit through the real form, failed-save snackbar |
 | `home_page_network_status_test.dart` | Online/offline indicator |

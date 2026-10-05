@@ -42,6 +42,22 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
         .watch();
   }
 
+  // ─────────────────────── LOCAL CHANGES ───────────────────
+  //
+  // Every write the USER makes (create / update / delete) goes through
+  // [_asLocalChange], which stamps two sync columns:
+  //   updatedAt = now    → when this device changed it (last-write-wins)
+  //   isSynced  = false  → the server doesn't have this version yet
+  // Keeping the rule in one place means no write can forget it.
+  // (Writes coming FROM the server in Part 4 will set isSynced = true.)
+
+  SubscriptionsCompanion _asLocalChange(SubscriptionsCompanion changes) {
+    return changes.copyWith(
+      updatedAt: Value(DateTime.now()),
+      isSynced: const Value(false),
+    );
+  }
+
   // ───────────────────────── CREATE ───────────────────────
 
   /// Adds one row.
@@ -58,7 +74,7 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
   /// Side effect you get for free: every `.watch()` on this table (e.g.
   /// [watchAll]) re-runs and emits the new list.
   Future<void> insertSubscription(SubscriptionsCompanion entry) {
-    return into(subscriptions).insert(entry);
+    return into(subscriptions).insert(_asLocalChange(entry));
   }
 
   // ───────────────────────── UPDATE ───────────────────────
@@ -85,7 +101,7 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
   Future<int> updateSubscription(String id, SubscriptionsCompanion changes) {
     return (update(subscriptions)
           ..where((t) => t.id.equals(id) & t.isDeleted.equals(false)))
-        .write(changes);
+        .write(_asLocalChange(changes));
   }
 
   // ───────────────────────── DELETE ───────────────────────
@@ -107,12 +123,13 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
   /// row disappears from the UI.
   Future<int> softDelete(String id) {
     return (update(subscriptions)..where((t) => t.id.equals(id))).write(
-      const SubscriptionsCompanion(isDeleted: Value(true)),
+      // A delete is a local change too: the server must hear about it.
+      _asLocalChange(const SubscriptionsCompanion(isDeleted: Value(true))),
     );
   }
 
-  // For comparison — a HARD delete (not used in an offline-first app until
-  // the server has confirmed the deletion, Part 4):
+  // For comparison — a HARD delete (used by the sync engine only after the
+  // server has confirmed the deletion):
   //
   //   (delete(subscriptions)..where((t) => t.id.equals(id))).go();
   //   → DELETE FROM subscriptions WHERE id = ?;   (row is gone for good)
