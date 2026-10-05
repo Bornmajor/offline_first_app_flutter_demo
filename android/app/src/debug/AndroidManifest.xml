@@ -4,4 +4,9 @@
          to allow setting breakpoints, to provide hot reload, etc.
     -->
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- DEBUG BUILDS ONLY: allow plain http:// so the app can reach the local
+         Express sync server (http://10.0.2.2:5000 or your PC's Wi-Fi IP).
+         Android blocks cleartext traffic by default; this file is merged
+         only into debug builds, so release builds still require HTTPS. -->
+    <application android:usesCleartextTraffic="true"/>
 </manifest>

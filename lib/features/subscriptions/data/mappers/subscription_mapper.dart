@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/data/remote/subscription_dto.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
 
 // ---------------------------------------------------------------------------
@@ -37,4 +38,42 @@ extension SubscriptionX on Subscription {
     category: Value(category),
     price: Value(price),
   );
+}
+
+// ---------------------------------------------------------------------------
+// Drift row <-> server DTO mapping (sync, Part 4)
+// ---------------------------------------------------------------------------
+
+/// PUSH direction: local row → what we send to the server.
+extension SubscriptionRowSyncX on SubscriptionRow {
+  SubscriptionDto toDto() => SubscriptionDto(
+    id: id,
+    name: name,
+    price: price,
+    billingCycle: billingCycle,
+    nextPaymentDate: dueDate, // the server calls the due date nextPaymentDate
+    category: category,
+    updatedAt: updatedAt,
+  );
+}
+
+/// PULL direction: server version → local row to store.
+extension SubscriptionDtoX on SubscriptionDto {
+  /// [isSynced] is true for data FROM the server: the server already has
+  /// exactly this version, so there's nothing to push back.
+  ///
+  /// All columns are set (not `Value.absent()`), because the server's copy
+  /// replaces the local one completely.
+  SubscriptionsCompanion toCompanion({bool isSynced = true}) =>
+      SubscriptionsCompanion(
+        id: Value(id),
+        name: Value(name),
+        billingCycle: Value(billingCycle),
+        dueDate: Value(nextPaymentDate),
+        category: Value(category),
+        price: Value(price),
+        isDeleted: Value(isDeleted),
+        updatedAt: Value(updatedAt),
+        isSynced: Value(isSynced),
+      );
 }

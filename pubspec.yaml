@@ -43,6 +43,7 @@ dependencies:
   uuid: ^4.6.0
   flutter_bloc: ^9.1.1
   equatable: ^3.0.0
+  dio: ^5.11.1
 
 
 dev_dependencies:
