@@ -107,7 +107,11 @@ void main() {
       };
 
       await syncService.sync();
-      expect((await onPhone(id))!.isSynced, isFalse); // still waiting
+      final afterFirstSync = (await onPhone(id))!;
+      expect(afterFirstSync.isSynced, isFalse); // still waiting
+      // The pull in the same sync brought back the OLD upload (price 9.99);
+      // rule ② kept the newer local edit instead of overwriting it.
+      expect(afterFirstSync.price, 30);
 
       await syncService.sync(); // next sync sends it
       expect(server.records[id]!['price'], 30);
@@ -193,6 +197,50 @@ void main() {
       await syncService.sync();
 
       expect(await onPhone(id), isNull); // deletes win
+    });
+
+    test(
+      'pull never overwrites a NEWER local edit that was not uploaded',
+      () async {
+        final id = await userCreates('Netflix');
+        await syncService.sync(); // server and phone both have price 9.99
+
+        // Someone edits it elsewhere at 10:00…
+        server.changeOnServer(
+          id,
+          name: 'Netflix',
+          price: 20,
+          updatedAt: DateTime.now().subtract(const Duration(minutes: 5)),
+        );
+        // …then this phone edits it LATER, but the upload gets rejected, so
+        // the pull runs while the newer local edit is still unsynced.
+        await userEditsPrice(id, 15);
+        server.rejectedIds.add(id);
+
+        await syncService.sync();
+
+        final row = (await onPhone(id))!;
+        expect(row.price, 15); // rule ②: newer local edit kept
+        expect(row.isSynced, isFalse); // still waiting to be uploaded
+      },
+    );
+
+    test('pull DOES replace an OLDER local edit (last write wins)', () async {
+      final id = await userCreates('Netflix');
+      await syncService.sync();
+
+      await userEditsPrice(id, 15); // phone edit…
+      server.rejectedIds.add(id); // …that can't be uploaded yet
+      server.changeOnServer(
+        id,
+        name: 'Netflix',
+        price: 20,
+        updatedAt: DateTime.now().add(const Duration(minutes: 5)), // newer
+      );
+
+      await syncService.sync();
+
+      expect((await onPhone(id))!.price, 20); // the newer server edit wins
     });
   });
 
