@@ -7,6 +7,7 @@ optimization, and synchronization happens in the background.
 ## Documentation
 
 - [Tech Stack](docs/tech-stack.md) — recommended offline-first stack (Riverpod, Dio, Drift, Freezed, connectivity_plus, workmanager, flutter_secure_storage, talker) with architecture diagrams and usage notes.
+- [Sync Flows](docs/sync-flows.md) — step-by-step walkthroughs: upload, download, sync triggers, offline scenarios, conflicts, and the plan for background sync.
 - [Offline-First Concepts](docs/offline-first-concepts.md) — the ideas behind this app (local source of truth, reactive reads, UUIDs, soft delete, migrations, repository mapping, DI, state management, sync), each with a one-sentence summary and where it lives in the code.
 
 ## Learning roadmap
@@ -229,6 +230,18 @@ makes the three HTTP calls and converts JSON.
 On app start · ~2 s after a local change · when the connection comes back ·
 every 5 minutes · on pull-to-refresh or tapping the status line under the
 title ("Synced", "Syncing…", "2 changes waiting", "Offline").
+
+### Offline, in short
+
+- Changes are saved in SQLite first, so they survive being offline, closing
+  the app, and restarting the phone (`is_synced = 0` until uploaded).
+- A sync that can't reach the server stops without changing anything; the
+  next trigger tries again.
+- Changes made offline are sent when the app is next open **and** online.
+  Sending them while the app is closed needs background sync (not built yet).
+
+**Step-by-step walkthroughs** of upload, download, triggers, offline cases
+and conflicts: [docs/sync-flows.md](docs/sync-flows.md).
 
 ### Schema note
 
