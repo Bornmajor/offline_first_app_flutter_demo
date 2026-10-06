@@ -1,23 +1,33 @@
-# offline_first_app_flutter_demo
+# Offline-First Subscription Tracker (Flutter)
 
 A subscription tracker built step by step to learn **offline-first** Flutter
-development: local data is the source of truth, the network is an
+development: the local database is the source of truth, the network is an
 optimization, and synchronization happens in the background.
 
-## Documentation
+## Features
 
-- [Tech Stack](docs/tech-stack.md) — recommended offline-first stack (Riverpod, Dio, Drift, Freezed, connectivity_plus, workmanager, flutter_secure_storage, talker) with architecture diagrams and usage notes.
-- [Sync Flows](docs/sync-flows.md) — step-by-step walkthroughs: upload, download, sync triggers, offline scenarios, conflicts, and the plan for background sync.
-- [Offline-First Concepts](docs/offline-first-concepts.md) — the ideas behind this app (local source of truth, reactive reads, UUIDs, soft delete, migrations, repository mapping, DI, state management, sync), each with a one-sentence summary and where it lives in the code.
+- Create, edit and delete subscriptions (name, price, category, billing
+  cycle, next due date) — **works fully offline**
+- Live list that updates itself after every change, from any source
+- Automatic two-way sync with a REST API when online: push local changes,
+  pull changes made on other devices or the web dashboard
+- Conflict handling: last write wins, deletions win, no duplicates on retry
+- Sync status in the app bar ("Synced", "Syncing…", "2 changes waiting",
+  "Offline") and pull-to-refresh
+- Online/offline indicator
 
-## Learning roadmap
+## Tech stack
 
-| Part | Topic | Status |
-| --- | --- | --- |
-| 1 | Why Drift for offline-first | ✅ |
-| 2 | [Interacting with the local database — CRUD with Drift + UI](#part-2--interacting-with-the-local-database-drift) | ✅ |
-| 3 | [State management with Cubit on top of the same data layer](#part-3--state-management-with-cubit) | ✅ |
-| 4 | [Offline sync with a server (push + pull)](#part-4--offline-sync-with-the-server) | ✅ |
+| Area | Tools |
+| --- | --- |
+| App | Flutter, Dart 3 |
+| Local database | [Drift](https://drift.simonbinder.eu) (SQLite) |
+| State management | [flutter_bloc](https://pub.dev/packages/flutter_bloc) (Cubit), equatable |
+| Networking | [Dio](https://pub.dev/packages/dio) |
+| Connectivity | connectivity_plus, internet_connection_checker_plus |
+| IDs | uuid (generated on the device) |
+| Backend | [Subscription Tracker API](https://github.com/Bornmajor/subscription-tracker-app) — Express + MongoDB |
+| Testing | flutter_test, bloc_test, in-memory SQLite, an in-memory fake server |
 
 ## Architecture
 
@@ -46,6 +56,75 @@ optimization, and synchronization happens in the background.
 else to refresh. `SubscriptionListCubit` listens to `watchAll()`, a Drift
 stream that re-emits whenever the `subscriptions` table changes — whoever
 changed it (the form, a delete, or the sync engine).
+
+## Getting started
+
+### Prerequisites
+
+- [Flutter SDK](https://docs.flutter.dev/get-started/install) (Dart `^3.13`)
+- An Android emulator, a physical phone, or a desktop target
+- For sync (optional — the app works offline without it):
+  [Node.js](https://nodejs.org) 18+ and
+  [MongoDB Community Server](https://www.mongodb.com/try/download/community)
+  to run the [API server](https://github.com/Bornmajor/subscription-tracker-app)
+- Windows only: building with plugins requires **Developer Mode**
+  (`start ms-settings:developers`)
+
+### 1. Install
+
+```sh
+git clone https://github.com/Bornmajor/offline_first_app_flutter_demo.git
+cd offline_first_app_flutter_demo
+flutter pub get
+dart run build_runner build   # generates the Drift *.g.dart files
+```
+
+Re-run `dart run build_runner build` after changing tables or DAOs.
+
+### 2. Start the API server (for sync)
+
+In the [subscription-tracker-app](https://github.com/Bornmajor/subscription-tracker-app)
+project (see its README for the `.env` setup):
+
+```sh
+npm install
+npm run dev     # http://localhost:5000
+```
+
+The web dashboard at `http://localhost:5000` lets you change data "from
+another device" and watch it sync to the app.
+
+### 3. Run the app
+
+Pass the server's API key (from its `.env`) at build time — it is never
+stored in the code:
+
+```sh
+flutter run --dart-define=API_KEY=YOUR_KEY
+```
+
+| Where the app runs | Server address |
+| --- | --- |
+| Android emulator | default (`http://10.0.2.2:5000`) — nothing to add |
+| Physical phone (same Wi-Fi) | add `--dart-define=API_BASE_URL=http://YOUR_PC_IP:5000` |
+| Windows app / iOS simulator | add `--dart-define=API_BASE_URL=http://localhost:5000` |
+
+- Find your PC's IP with `ipconfig` (Windows): "IPv4 Address" under Wi-Fi.
+  A physical phone may also need Windows Firewall to allow port 5000.
+- Plain `http://` is allowed for Android debug builds and iOS local
+  networking only.
+- Without `API_KEY` or a reachable server, the app still works fully
+  offline; the status line shows "Offline".
+- Coming from an older dev build? Uninstall it once — the database schema
+  was reset (see [Schema note](#schema-note)).
+
+### 4. Run the tests
+
+```sh
+flutter test
+```
+
+See [Testing](#testing) for what each test file covers.
 
 ## Project structure
 
@@ -82,15 +161,37 @@ lib/
         └── widgets/
 ```
 
+## Status and roadmap
+
+| Part | Topic | Status |
+| --- | --- | --- |
+| 1 | Why Drift for offline-first | ✅ Done |
+| 2 | [Local database — CRUD with Drift + UI](#part-2--interacting-with-the-local-database-drift) | ✅ Done |
+| 3 | [State management with Cubit](#part-3--state-management-with-cubit) | ✅ Done |
+| 4 | [Offline sync with the server (push + pull, automatic triggers)](#part-4--offline-sync-with-the-server) | ✅ Done (while the app is open) |
+| — | Verify sync end-to-end against the live API | ⏳ Pending |
+| — | Data-layer naming cleanup (local/remote data sources, models) | ⏳ Planned |
+| 5 | Background sync while the app is closed (`workmanager`) | ⏳ Planned — last stage ([plan](docs/sync-flows.md#not-covered-yet--sync-while-the-app-is-closed)) |
+
+## Documentation
+
+- [Sync Flows](docs/sync-flows.md) — step-by-step walkthroughs: upload, download, sync triggers, offline scenarios, conflicts, and the plan for background sync.
+- [Offline-First Concepts](docs/offline-first-concepts.md) — the ideas behind this app (local source of truth, reactive reads, UUIDs, soft delete, migrations, repository mapping, DI, state management, sync), each with a one-sentence summary and where it lives in the code.
+- [Tech Stack](docs/tech-stack.md) — the recommended offline-first stack with architecture diagrams and usage notes.
+
 ---
 
-## Part 2 — Interacting with the local database (Drift)
+## How it works
+
+Deep dives into each part, in the order they were built.
+
+### Part 2 — Interacting with the local database (Drift)
 
 **Goal:** the app stores subscriptions in a local SQLite database and
 supports full **CRUD** — create, read, update, delete — entirely offline,
 with the UI updating automatically after every change.
 
-### What the app does
+#### What the app does
 
 | Operation | In the app | In SQLite |
 | --- | --- | --- |
@@ -101,7 +202,7 @@ with the UI updating automatically after every change.
 
 Data survives app restarts and works in airplane mode.
 
-### Drift CRUD cheat sheet
+#### Drift CRUD cheat sheet
 
 | | DAO (Drift) | Repository |
 | --- | --- | --- |
@@ -124,7 +225,7 @@ Key concepts:
 
 ---
 
-## Part 3 — State management with Cubit
+### Part 3 — State management with Cubit
 
 **Goal:** move the screens' logic (listening to data, saving, deleting,
 loading and error handling) out of the widgets into Cubits, so widgets only
@@ -133,7 +234,7 @@ loading and error handling) out of the widgets into Cubits, so widgets only
 Packages: `flutter_bloc` (Cubit, BlocProvider, BlocBuilder, BlocListener,
 RepositoryProvider), `equatable` (state equality), `bloc_test` (dev).
 
-### Who does what
+#### Who does what
 
 | Layer | Responsibility |
 | --- | --- |
@@ -142,14 +243,14 @@ RepositoryProvider), `equatable` (state equality), `bloc_test` (dev).
 | **Cubit** | Logic: listens to the database, saves, deletes, emits states |
 | **Repository** | Data access (Part 2) |
 
-### The two Cubits
+#### The two Cubits
 
 | Cubit | Screen | Operations | States |
 | --- | --- | --- | --- |
 | `SubscriptionListCubit` | Home | Read (`watchSubscriptions`), Delete (`delete`) | `loading` → `success` (items) / `failure` |
 | `SubscriptionFormCubit` | Form | Create + Update (`save`) | `idle` → `saving` → `success` / `failure` |
 
-### Dependency injection
+#### Dependency injection
 
 `main()` creates one `AppDatabase` and puts its repository in the widget tree
 **above `MaterialApp`**, so every page — including pushed routes — can read it:
@@ -172,7 +273,7 @@ BlocProvider(
 `BlocProvider` closes the Cubit when the page is removed (the list Cubit
 cancels its database stream in `close()`).
 
-### Key concepts
+#### Key concepts
 
 - **State is immutable** — Cubits build the next state with `copyWith` and
   `emit` it; `Equatable` compares states by value.
@@ -190,14 +291,14 @@ cancels its database stream in `close()`).
 
 ---
 
-## Part 4 — Offline sync with the server
+### Part 4 — Offline sync with the server
 
 **Goal:** keep working offline, and exchange changes with the
 [Subscription Tracker API](https://github.com/Bornmajor/subscription-tracker-app)
 (Express + MongoDB) whenever the server can be reached — without the screens
 knowing anything about the network.
 
-### One sync = push, then pull
+#### One sync = push, then pull
 
 ```
 sync()
@@ -213,7 +314,7 @@ All of it lives in [`sync_service.dart`](lib/features/subscriptions/data/sync/sy
 [`subscription_api.dart`](lib/features/subscriptions/data/remote/subscription_api.dart)
 makes the three HTTP calls and converts JSON.
 
-### The rules
+#### The rules
 
 | Rule | How |
 | --- | --- |
@@ -225,13 +326,13 @@ makes the three HTTP calls and converts JSON.
 | Only new changes are downloaded | The "bookmark" (`lastPulledAt`, the server's time) is stored in `sync_metadata` |
 | Offline loses nothing | Unsynced rows simply wait; the next sync sends them |
 
-### When it syncs (`SyncCubit`)
+#### When it syncs (`SyncCubit`)
 
 On app start · ~2 s after a local change · when the connection comes back ·
 every 5 minutes · on pull-to-refresh or tapping the status line under the
 title ("Synced", "Syncing…", "2 changes waiting", "Offline").
 
-### Edge cases and how they're handled
+#### Edge cases and how they're handled
 
 **Being offline**
 
@@ -273,39 +374,14 @@ title ("Synced", "Syncing…", "2 changes waiting", "Offline").
 **Step-by-step walkthroughs** of upload, download, triggers, offline cases
 and conflicts: [docs/sync-flows.md](docs/sync-flows.md).
 
-### Schema note
+#### Schema note
 
 Before adding the sync columns, the database schema was squashed back to a
 clean v1 (the app had no released users). Uninstall older dev builds once.
 
 ---
 
-## Running
-
-1. Start the [API server](https://github.com/Bornmajor/subscription-tracker-app)
-   (`npm run dev`, port 5000).
-2. Run the app with the server's API key (it is read at build time, never
-   stored in code):
-
-```sh
-flutter pub get
-dart run build_runner build   # regenerate *.g.dart after changing tables/DAOs
-flutter run --dart-define=API_KEY=YOUR_KEY
-```
-
-| Where the app runs | Server address |
-| --- | --- |
-| Android emulator | default (`http://10.0.2.2:5000`) |
-| Physical phone (same Wi-Fi) | `--dart-define=API_BASE_URL=http://YOUR_PC_IP:5000` |
-| Windows app / iOS simulator | `--dart-define=API_BASE_URL=http://localhost:5000` |
-
-Plain `http://` is allowed for Android debug builds and iOS local networking
-only. Without a reachable server the app still works fully offline.
-
-> Windows: building with plugins requires Developer Mode
-> (`start ms-settings:developers`).
-
-## Tests
+## Testing
 
 ```sh
 flutter test
