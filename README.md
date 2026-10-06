@@ -231,14 +231,44 @@ On app start · ~2 s after a local change · when the connection comes back ·
 every 5 minutes · on pull-to-refresh or tapping the status line under the
 title ("Synced", "Syncing…", "2 changes waiting", "Offline").
 
-### Offline, in short
+### Edge cases and how they're handled
 
-- Changes are saved in SQLite first, so they survive being offline, closing
-  the app, and restarting the phone (`is_synced = 0` until uploaded).
-- A sync that can't reach the server stops without changing anything; the
-  next trigger tries again.
-- Changes made offline are sent when the app is next open **and** online.
-  Sending them while the app is closed needs background sync (not built yet).
+**Being offline**
+
+| Edge case | How it's solved |
+| --- | --- |
+| App opened with no internet | Everything still works from SQLite; the sync attempt fails fast and shows "Offline · N changes waiting" |
+| Edited offline, app closed, reopened later | Changes are rows with `is_synced = 0` in SQLite, so they survive closing and reboots; uploaded on the next open while online |
+| Edited offline and the app is **never** reopened | ⚠️ Not solved yet — stays on the phone. Planned: background sync with `workmanager` (last stage) |
+| Connection comes back while the app is open | `NetworkInfo` reports *online* → sync runs immediately |
+| Internet works but the server is down | Treated as offline; the 5-minute timer or pull-to-refresh retries |
+| Fresh install while offline | Shows only what's created on the phone; the first successful sync downloads the rest |
+
+**During a sync**
+
+| Edge case | How it's solved |
+| --- | --- |
+| Connection drops mid-sync | Network error stops the sync; unsent rows stay `is_synced = 0`, the bookmark doesn't move |
+| Request reached the server but the response was lost | The retry sends the same UUID; the server updates instead of creating a duplicate |
+| App killed while saving a download | Rows and bookmark are saved in one transaction — all or nothing, so nothing is skipped |
+| User edits a row while it's uploading | `markSynced` only matches the uploaded `updated_at`, so the newer edit stays unsynced and goes next |
+| Server rejects one row (e.g. invalid data) | That row is skipped and stays unsynced; the others still sync |
+| Two syncs triggered at once | Only one runs (`_isSyncing` guard) |
+| Many quick edits | Debounced: one sync ~2 s after the last change |
+| Failing syncs retrying forever | Never loops — only the next trigger tries again |
+
+**Conflicts and data correctness**
+
+| Edge case | How it's solved |
+| --- | --- |
+| Same record edited on two devices | Last write wins on `updatedAt` (server-side for pushes, rule ② for pulls) |
+| A download would overwrite a newer local edit | Push runs first, and a pull never replaces a newer unsynced local change |
+| Edited here, deleted elsewhere (or the reverse) | Deletes win: the record is removed everywhere |
+| Deleted on another device | The server keeps a tombstone (`deletedAt`), so the next pull removes it here |
+| Created **and** deleted offline, never uploaded | Only a `DELETE` is sent; the server's `404` counts as done, the row is removed |
+| A phone with a wrong clock | The bookmark uses the server's time, so pulls never miss changes (conflict decisions still trust device time — known limitation) |
+| Two edits within the same second | Dates stored with milliseconds, so they stay distinguishable |
+| Due date shifting a day across time zones | Sent as a plain date (`2026-10-07`), not a timestamp |
 
 **Step-by-step walkthroughs** of upload, download, triggers, offline cases
 and conflicts: [docs/sync-flows.md](docs/sync-flows.md).
