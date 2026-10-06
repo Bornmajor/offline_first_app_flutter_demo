@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:dio/dio.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
@@ -55,6 +57,22 @@ class _HomeViewState extends State<HomeView> {
   // Cubit work). Created once so rebuilds don't re-subscribe.
   late final Stream<NetworkStatus> _networkStatus =
       (widget.networkInfo ?? NetworkInfo()).watchStatus();
+
+  /// TEMPORARY: runs one sync and reports the outcome (replaced in A5).
+  Future<void> _syncNow() async {
+    final syncService = context.read<SyncService>();
+    final messenger = ScaffoldMessenger.of(context);
+    String message;
+    try {
+      await syncService.sync();
+      message = 'Synced';
+    } on DioException catch (e) {
+      message = e.response == null
+          ? 'Offline: changes stay on this device until the next sync'
+          : 'Server error ${e.response!.statusCode}';
+    }
+    messenger.showSnackBar(SnackBar(content: Text(message)));
+  }
 
   /// DELETE: the dialog is a UI job, so it stays here in the View.
   /// The actual delete is the Cubit's job.
@@ -111,6 +129,13 @@ class _HomeViewState extends State<HomeView> {
                 isOffline: snapshot.data == NetworkStatus.offline,
               );
             },
+          ),
+          // TEMPORARY: manual sync for testing. Replaced in A5 by
+          // automatic sync triggers and a sync status driven by a Cubit.
+          IconButton(
+            tooltip: 'Sync now',
+            icon: const Icon(Icons.sync),
+            onPressed: _syncNow,
           ),
         ],
       ),

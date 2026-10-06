@@ -1,5 +1,6 @@
 import 'package:drift/drift.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
+import 'package:offline_first_app_flutter_demo/core/database/tables/sync_metadata_table.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/local/subscriptions_table.dart';
 
 part 'subscriptions_dao.g.dart';
@@ -9,7 +10,7 @@ part 'subscriptions_dao.g.dart';
 ///
 /// Queries are added step by step:
 /// READ (Step 2) ✅, CREATE (Step 3) ✅, DELETE (Step 4) ✅, UPDATE (Step 5) ✅.
-@DriftAccessor(tables: [Subscriptions])
+@DriftAccessor(tables: [Subscriptions, SyncMetadata])
 class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
     with _$SubscriptionsDaoMixin {
   SubscriptionsDao(super.attachedDatabase);
@@ -128,9 +129,61 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
     );
   }
 
-  // For comparison — a HARD delete (used by the sync engine only after the
-  // server has confirmed the deletion):
+  // ───────────────────────── SYNC ─────────────────────────
   //
-  //   (delete(subscriptions)..where((t) => t.id.equals(id))).go();
-  //   → DELETE FROM subscriptions WHERE id = ?;   (row is gone for good)
+  // Used only by SyncService, never by the UI. These writes come FROM the
+  // server, so they skip [_asLocalChange] (they are not user changes).
+
+  /// Rows the server doesn't have yet: new, edited, or deleted locally.
+  Future<List<SubscriptionRow>> getUnsynced() {
+    return (select(
+      subscriptions,
+    )..where((t) => t.isSynced.equals(false))).get();
+  }
+
+  /// One row by id, including deleted ones.
+  Future<SubscriptionRow?> findById(String id) {
+    return (select(
+      subscriptions,
+    )..where((t) => t.id.equals(id))).getSingleOrNull();
+  }
+
+  /// "The server has this version now."
+  ///
+  /// Only marks the row if it still has the [updatedAt] we uploaded. If the
+  /// user edited it during the upload, it stays unsynced and the newer edit
+  /// is sent next time.
+  Future<void> markSynced(String id, DateTime updatedAt) {
+    return (update(subscriptions)
+          ..where((t) => t.id.equals(id) & t.updatedAt.equals(updatedAt)))
+        .write(const SubscriptionsCompanion(isSynced: Value(true)));
+  }
+
+  /// Saves the server's version: inserts it, or replaces the local row.
+  Future<void> saveFromServer(SubscriptionsCompanion row) {
+    return into(subscriptions).insertOnConflictUpdate(row);
+  }
+
+  /// Removes a row for good. Only once the server knows it's deleted.
+  Future<void> hardDelete(String id) {
+    return (delete(subscriptions)..where((t) => t.id.equals(id))).go();
+  }
+
+  // The "bookmark": server time of the last download, so the next download
+  // only asks for newer changes. Stored in the sync_metadata table.
+
+  static const _lastPulledAtKey = 'subscriptions.lastPulledAt';
+
+  Future<String?> getLastPulledAt() async {
+    final row = await (select(
+      syncMetadata,
+    )..where((t) => t.key.equals(_lastPulledAtKey))).getSingleOrNull();
+    return row?.value;
+  }
+
+  Future<void> setLastPulledAt(String serverTime) {
+    return into(syncMetadata).insertOnConflictUpdate(
+      SyncMetadataCompanion.insert(key: _lastPulledAtKey, value: serverTime),
+    );
+  }
 }
