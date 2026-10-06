@@ -14,7 +14,6 @@ optimization, and synchronization happens in the background.
 - Conflict handling: last write wins, deletions win, no duplicates on retry
 - Sync status in the app bar ("Synced", "Syncing…", "2 changes waiting",
   "Offline") and pull-to-refresh
-- Online/offline indicator
 
 ## Tech stack
 
@@ -404,5 +403,5 @@ same rules as the real API.
 | `subscription_repository_test.dart` | Each CRUD operation; live stream re-emits; soft delete keeps the row |
 | `home_page_list_test.dart` | Empty state, live list, delete with confirm/cancel, failed-delete snackbar |
 | `subscription_form_flow_test.dart` | Create and edit through the real form, failed-save snackbar |
-| `home_page_network_status_test.dart` | Online/offline indicator |
+| `sync_status_line_test.dart` | The status line text for each sync state (incl. "Offline · N changes waiting"), tap to sync |
 | `form_validators_test.dart` | Form validation rules |
