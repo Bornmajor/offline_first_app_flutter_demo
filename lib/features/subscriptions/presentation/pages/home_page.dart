@@ -1,14 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/subscription_form_page.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/net_status_topbar.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/sync_status_line.dart';
 
 /// Home screen — PAGE part: wiring only.
 ///
@@ -18,10 +17,7 @@ import 'package:offline_first_app_flutter_demo/features/subscriptions/presentati
 /// Keeping them apart means the View never cares where the Cubit came from
 /// (a test could provide a different one).
 class HomePage extends StatelessWidget {
-  const HomePage({super.key, this.networkInfo});
-
-  /// Injectable for tests; defaults to the real connectivity checks.
-  final NetworkInfo? networkInfo;
+  const HomePage({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -35,27 +31,20 @@ class HomePage extends StatelessWidget {
       create: (context) =>
           SubscriptionListCubit(context.read<SubscriptionRepository>())
             ..watchSubscriptions(),
-      child: HomeView(networkInfo: networkInfo),
+      child: const HomeView(),
     );
   }
 }
 
 /// Home screen — VIEW part: draws whatever the Cubit's state says.
 class HomeView extends StatefulWidget {
-  const HomeView({super.key, this.networkInfo});
-
-  final NetworkInfo? networkInfo;
+  const HomeView({super.key});
 
   @override
   State<HomeView> createState() => _HomeViewState();
 }
 
 class _HomeViewState extends State<HomeView> {
-  // Network indicator: unchanged, still a plain stream (not part of the
-  // Cubit work). Created once so rebuilds don't re-subscribe.
-  late final Stream<NetworkStatus> _networkStatus =
-      (widget.networkInfo ?? NetworkInfo()).watchStatus();
-
   /// DELETE: the dialog is a UI job, so it stays here in the View.
   /// The actual delete is the Cubit's job.
   Future<void> _confirmAndDelete(Subscription item) async {
@@ -99,20 +88,13 @@ class _HomeViewState extends State<HomeView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Subscription tracker'),
-        actions: [
-          StreamBuilder<NetworkStatus>(
-            stream: _networkStatus,
-            builder: (context, snapshot) {
-              // Hidden until the first check completes, so it never
-              // shows a status we haven't confirmed yet.
-              if (!snapshot.hasData) return const SizedBox.shrink();
-              return NetStatusTopbar(
-                isOffline: snapshot.data == NetworkStatus.offline,
-              );
-            },
-          ),
-        ],
+        // Title with the sync status underneath. It also covers being
+        // offline ("Offline · 2 changes waiting"), so no separate network
+        // indicator is needed.
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [Text('Subscription tracker'), SyncStatusLine()],
+        ),
       ),
       floatingActionButton: FloatingActionButton.extended(
         label: const Text('Create subscription'),
@@ -190,6 +172,14 @@ class _SubscriptionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pull down to sync now; the spinner stays until the sync finishes.
+    return RefreshIndicator(
+      onRefresh: () => context.read<SyncCubit>().syncNow(),
+      child: _buildCards(),
+    );
+  }
+
+  Widget _buildCards() {
     return ListView.builder(
       // Extra bottom space so the FAB doesn't cover the last card.
       padding: const EdgeInsets.only(bottom: 88.0),

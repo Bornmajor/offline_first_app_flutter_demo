@@ -87,6 +87,33 @@ class $SubscriptionsTable extends Subscriptions
     ),
     defaultValue: const Constant(false),
   );
+  static const VerificationMeta _updatedAtMeta = const VerificationMeta(
+    'updatedAt',
+  );
+  @override
+  late final GeneratedColumn<DateTime> updatedAt = GeneratedColumn<DateTime>(
+    'updated_at',
+    aliasedName,
+    false,
+    type: DriftSqlType.dateTime,
+    requiredDuringInsert: false,
+    clientDefault: DateTime.now,
+  );
+  static const VerificationMeta _isSyncedMeta = const VerificationMeta(
+    'isSynced',
+  );
+  @override
+  late final GeneratedColumn<bool> isSynced = GeneratedColumn<bool>(
+    'is_synced',
+    aliasedName,
+    false,
+    type: DriftSqlType.bool,
+    requiredDuringInsert: false,
+    defaultConstraints: GeneratedColumn.constraintIsAlways(
+      'CHECK ("is_synced" IN (0, 1))',
+    ),
+    defaultValue: const Constant(false),
+  );
   @override
   List<GeneratedColumn> get $columns => [
     id,
@@ -96,6 +123,8 @@ class $SubscriptionsTable extends Subscriptions
     category,
     price,
     isDeleted,
+    updatedAt,
+    isSynced,
   ];
   @override
   String get aliasedName => _alias ?? actualTableName;
@@ -150,6 +179,18 @@ class $SubscriptionsTable extends Subscriptions
         isDeleted.isAcceptableOrUnknown(data['is_deleted']!, _isDeletedMeta),
       );
     }
+    if (data.containsKey('updated_at')) {
+      context.handle(
+        _updatedAtMeta,
+        updatedAt.isAcceptableOrUnknown(data['updated_at']!, _updatedAtMeta),
+      );
+    }
+    if (data.containsKey('is_synced')) {
+      context.handle(
+        _isSyncedMeta,
+        isSynced.isAcceptableOrUnknown(data['is_synced']!, _isSyncedMeta),
+      );
+    }
     return context;
   }
 
@@ -189,6 +230,14 @@ class $SubscriptionsTable extends Subscriptions
         DriftSqlType.bool,
         data['${effectivePrefix}is_deleted'],
       )!,
+      updatedAt: attachedDatabase.typeMapping.read(
+        DriftSqlType.dateTime,
+        data['${effectivePrefix}updated_at'],
+      )!,
+      isSynced: attachedDatabase.typeMapping.read(
+        DriftSqlType.bool,
+        data['${effectivePrefix}is_synced'],
+      )!,
     );
   }
 
@@ -219,15 +268,26 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
   final String category;
   final double price;
 
-  /// Added in schema version 2 (Step 4).
-  ///
-  /// SOFT delete flag: "deleting" sets this to true instead of removing the
-  /// row. Reads filter it out, so the user sees it gone — but the row stays
-  /// in SQLite so the sync engine (Part 4) can later tell the server
+  /// SOFT delete flag (a tombstone): "deleting" sets this to true instead of
+  /// removing the row. Reads filter it out, so the user sees it gone — but
+  /// the row stays in SQLite so the sync engine can tell the server
   /// "this was deleted". A hard DELETE would leave nothing to sync.
-  ///
-  /// `withDefault` matters for the migration: existing rows get `false`.
   final bool isDeleted;
+
+  /// WHEN this record last changed on this device (the device's clock).
+  ///
+  /// Sent to the server as `updatedAt`; the server compares it for
+  /// last-write-wins. Every local write sets it to "now". `clientDefault`
+  /// fills it in for inserts that don't set it.
+  final DateTime updatedAt;
+
+  /// Does the server already have this exact version?
+  ///
+  ///   false → a local change is waiting to be pushed (new, edited, deleted)
+  ///   true  → in sync with the server
+  ///
+  /// Every local write sets it to false; a successful push sets it to true.
+  final bool isSynced;
   const SubscriptionRow({
     required this.id,
     required this.name,
@@ -236,6 +296,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
     required this.category,
     required this.price,
     required this.isDeleted,
+    required this.updatedAt,
+    required this.isSynced,
   });
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -251,6 +313,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
     map['category'] = Variable<String>(category);
     map['price'] = Variable<double>(price);
     map['is_deleted'] = Variable<bool>(isDeleted);
+    map['updated_at'] = Variable<DateTime>(updatedAt);
+    map['is_synced'] = Variable<bool>(isSynced);
     return map;
   }
 
@@ -263,6 +327,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
       category: Value(category),
       price: Value(price),
       isDeleted: Value(isDeleted),
+      updatedAt: Value(updatedAt),
+      isSynced: Value(isSynced),
     );
   }
 
@@ -281,6 +347,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
       category: serializer.fromJson<String>(json['category']),
       price: serializer.fromJson<double>(json['price']),
       isDeleted: serializer.fromJson<bool>(json['isDeleted']),
+      updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
+      isSynced: serializer.fromJson<bool>(json['isSynced']),
     );
   }
   @override
@@ -296,6 +364,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
       'category': serializer.toJson<String>(category),
       'price': serializer.toJson<double>(price),
       'isDeleted': serializer.toJson<bool>(isDeleted),
+      'updatedAt': serializer.toJson<DateTime>(updatedAt),
+      'isSynced': serializer.toJson<bool>(isSynced),
     };
   }
 
@@ -307,6 +377,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
     String? category,
     double? price,
     bool? isDeleted,
+    DateTime? updatedAt,
+    bool? isSynced,
   }) => SubscriptionRow(
     id: id ?? this.id,
     name: name ?? this.name,
@@ -315,6 +387,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
     category: category ?? this.category,
     price: price ?? this.price,
     isDeleted: isDeleted ?? this.isDeleted,
+    updatedAt: updatedAt ?? this.updatedAt,
+    isSynced: isSynced ?? this.isSynced,
   );
   SubscriptionRow copyWithCompanion(SubscriptionsCompanion data) {
     return SubscriptionRow(
@@ -327,6 +401,8 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
       category: data.category.present ? data.category.value : this.category,
       price: data.price.present ? data.price.value : this.price,
       isDeleted: data.isDeleted.present ? data.isDeleted.value : this.isDeleted,
+      updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
+      isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
     );
   }
 
@@ -339,14 +415,25 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
           ..write('dueDate: $dueDate, ')
           ..write('category: $category, ')
           ..write('price: $price, ')
-          ..write('isDeleted: $isDeleted')
+          ..write('isDeleted: $isDeleted, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isSynced: $isSynced')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode =>
-      Object.hash(id, name, billingCycle, dueDate, category, price, isDeleted);
+  int get hashCode => Object.hash(
+    id,
+    name,
+    billingCycle,
+    dueDate,
+    category,
+    price,
+    isDeleted,
+    updatedAt,
+    isSynced,
+  );
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -357,7 +444,9 @@ class SubscriptionRow extends DataClass implements Insertable<SubscriptionRow> {
           other.dueDate == this.dueDate &&
           other.category == this.category &&
           other.price == this.price &&
-          other.isDeleted == this.isDeleted);
+          other.isDeleted == this.isDeleted &&
+          other.updatedAt == this.updatedAt &&
+          other.isSynced == this.isSynced);
 }
 
 class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
@@ -368,6 +457,8 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
   final Value<String> category;
   final Value<double> price;
   final Value<bool> isDeleted;
+  final Value<DateTime> updatedAt;
+  final Value<bool> isSynced;
   final Value<int> rowid;
   const SubscriptionsCompanion({
     this.id = const Value.absent(),
@@ -377,6 +468,8 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
     this.category = const Value.absent(),
     this.price = const Value.absent(),
     this.isDeleted = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   });
   SubscriptionsCompanion.insert({
@@ -387,6 +480,8 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
     required String category,
     required double price,
     this.isDeleted = const Value.absent(),
+    this.updatedAt = const Value.absent(),
+    this.isSynced = const Value.absent(),
     this.rowid = const Value.absent(),
   }) : name = Value(name),
        billingCycle = Value(billingCycle),
@@ -401,6 +496,8 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
     Expression<String>? category,
     Expression<double>? price,
     Expression<bool>? isDeleted,
+    Expression<DateTime>? updatedAt,
+    Expression<bool>? isSynced,
     Expression<int>? rowid,
   }) {
     return RawValuesInsertable({
@@ -411,6 +508,8 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
       if (category != null) 'category': category,
       if (price != null) 'price': price,
       if (isDeleted != null) 'is_deleted': isDeleted,
+      if (updatedAt != null) 'updated_at': updatedAt,
+      if (isSynced != null) 'is_synced': isSynced,
       if (rowid != null) 'rowid': rowid,
     });
   }
@@ -423,6 +522,8 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
     Value<String>? category,
     Value<double>? price,
     Value<bool>? isDeleted,
+    Value<DateTime>? updatedAt,
+    Value<bool>? isSynced,
     Value<int>? rowid,
   }) {
     return SubscriptionsCompanion(
@@ -433,6 +534,8 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
       category: category ?? this.category,
       price: price ?? this.price,
       isDeleted: isDeleted ?? this.isDeleted,
+      updatedAt: updatedAt ?? this.updatedAt,
+      isSynced: isSynced ?? this.isSynced,
       rowid: rowid ?? this.rowid,
     );
   }
@@ -463,6 +566,12 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
     if (isDeleted.present) {
       map['is_deleted'] = Variable<bool>(isDeleted.value);
     }
+    if (updatedAt.present) {
+      map['updated_at'] = Variable<DateTime>(updatedAt.value);
+    }
+    if (isSynced.present) {
+      map['is_synced'] = Variable<bool>(isSynced.value);
+    }
     if (rowid.present) {
       map['rowid'] = Variable<int>(rowid.value);
     }
@@ -479,6 +588,219 @@ class SubscriptionsCompanion extends UpdateCompanion<SubscriptionRow> {
           ..write('category: $category, ')
           ..write('price: $price, ')
           ..write('isDeleted: $isDeleted, ')
+          ..write('updatedAt: $updatedAt, ')
+          ..write('isSynced: $isSynced, ')
+          ..write('rowid: $rowid')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $SyncMetadataTable extends SyncMetadata
+    with TableInfo<$SyncMetadataTable, SyncMetadataRow> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $SyncMetadataTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _keyMeta = const VerificationMeta('key');
+  @override
+  late final GeneratedColumn<String> key = GeneratedColumn<String>(
+    'key',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  static const VerificationMeta _valueMeta = const VerificationMeta('value');
+  @override
+  late final GeneratedColumn<String> value = GeneratedColumn<String>(
+    'value',
+    aliasedName,
+    false,
+    type: DriftSqlType.string,
+    requiredDuringInsert: true,
+  );
+  @override
+  List<GeneratedColumn> get $columns => [key, value];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'sync_metadata';
+  @override
+  VerificationContext validateIntegrity(
+    Insertable<SyncMetadataRow> instance, {
+    bool isInserting = false,
+  }) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('key')) {
+      context.handle(
+        _keyMeta,
+        key.isAcceptableOrUnknown(data['key']!, _keyMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_keyMeta);
+    }
+    if (data.containsKey('value')) {
+      context.handle(
+        _valueMeta,
+        value.isAcceptableOrUnknown(data['value']!, _valueMeta),
+      );
+    } else if (isInserting) {
+      context.missing(_valueMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {key};
+  @override
+  SyncMetadataRow map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return SyncMetadataRow(
+      key: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}key'],
+      )!,
+      value: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}value'],
+      )!,
+    );
+  }
+
+  @override
+  $SyncMetadataTable createAlias(String alias) {
+    return $SyncMetadataTable(attachedDatabase, alias);
+  }
+}
+
+class SyncMetadataRow extends DataClass implements Insertable<SyncMetadataRow> {
+  /// Setting name, namespaced by feature (e.g. `subscriptions.lastPulledAt`).
+  final String key;
+
+  /// Setting value as text (e.g. an ISO-8601 date).
+  final String value;
+  const SyncMetadataRow({required this.key, required this.value});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['key'] = Variable<String>(key);
+    map['value'] = Variable<String>(value);
+    return map;
+  }
+
+  SyncMetadataCompanion toCompanion(bool nullToAbsent) {
+    return SyncMetadataCompanion(key: Value(key), value: Value(value));
+  }
+
+  factory SyncMetadataRow.fromJson(
+    Map<String, dynamic> json, {
+    ValueSerializer? serializer,
+  }) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return SyncMetadataRow(
+      key: serializer.fromJson<String>(json['key']),
+      value: serializer.fromJson<String>(json['value']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'key': serializer.toJson<String>(key),
+      'value': serializer.toJson<String>(value),
+    };
+  }
+
+  SyncMetadataRow copyWith({String? key, String? value}) =>
+      SyncMetadataRow(key: key ?? this.key, value: value ?? this.value);
+  SyncMetadataRow copyWithCompanion(SyncMetadataCompanion data) {
+    return SyncMetadataRow(
+      key: data.key.present ? data.key.value : this.key,
+      value: data.value.present ? data.value.value : this.value,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncMetadataRow(')
+          ..write('key: $key, ')
+          ..write('value: $value')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(key, value);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is SyncMetadataRow &&
+          other.key == this.key &&
+          other.value == this.value);
+}
+
+class SyncMetadataCompanion extends UpdateCompanion<SyncMetadataRow> {
+  final Value<String> key;
+  final Value<String> value;
+  final Value<int> rowid;
+  const SyncMetadataCompanion({
+    this.key = const Value.absent(),
+    this.value = const Value.absent(),
+    this.rowid = const Value.absent(),
+  });
+  SyncMetadataCompanion.insert({
+    required String key,
+    required String value,
+    this.rowid = const Value.absent(),
+  }) : key = Value(key),
+       value = Value(value);
+  static Insertable<SyncMetadataRow> custom({
+    Expression<String>? key,
+    Expression<String>? value,
+    Expression<int>? rowid,
+  }) {
+    return RawValuesInsertable({
+      if (key != null) 'key': key,
+      if (value != null) 'value': value,
+      if (rowid != null) 'rowid': rowid,
+    });
+  }
+
+  SyncMetadataCompanion copyWith({
+    Value<String>? key,
+    Value<String>? value,
+    Value<int>? rowid,
+  }) {
+    return SyncMetadataCompanion(
+      key: key ?? this.key,
+      value: value ?? this.value,
+      rowid: rowid ?? this.rowid,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (key.present) {
+      map['key'] = Variable<String>(key.value);
+    }
+    if (value.present) {
+      map['value'] = Variable<String>(value.value);
+    }
+    if (rowid.present) {
+      map['rowid'] = Variable<int>(rowid.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('SyncMetadataCompanion(')
+          ..write('key: $key, ')
+          ..write('value: $value, ')
           ..write('rowid: $rowid')
           ..write(')'))
         .toString();
@@ -489,6 +811,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   _$AppDatabase(QueryExecutor e) : super(e);
   $AppDatabaseManager get managers => $AppDatabaseManager(this);
   late final $SubscriptionsTable subscriptions = $SubscriptionsTable(this);
+  late final $SyncMetadataTable syncMetadata = $SyncMetadataTable(this);
   late final SubscriptionsDao subscriptionsDao = SubscriptionsDao(
     this as AppDatabase,
   );
@@ -496,7 +819,13 @@ abstract class _$AppDatabase extends GeneratedDatabase {
   Iterable<TableInfo<Table, Object?>> get allTables =>
       allSchemaEntities.whereType<TableInfo<Table, Object?>>();
   @override
-  List<DatabaseSchemaEntity> get allSchemaEntities => [subscriptions];
+  List<DatabaseSchemaEntity> get allSchemaEntities => [
+    subscriptions,
+    syncMetadata,
+  ];
+  @override
+  DriftDatabaseOptions get options =>
+      const DriftDatabaseOptions(storeDateTimeAsText: true);
 }
 
 typedef $$SubscriptionsTableCreateCompanionBuilder =
@@ -508,6 +837,8 @@ typedef $$SubscriptionsTableCreateCompanionBuilder =
       required String category,
       required double price,
       Value<bool> isDeleted,
+      Value<DateTime> updatedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 typedef $$SubscriptionsTableUpdateCompanionBuilder =
@@ -519,6 +850,8 @@ typedef $$SubscriptionsTableUpdateCompanionBuilder =
       Value<String> category,
       Value<double> price,
       Value<bool> isDeleted,
+      Value<DateTime> updatedAt,
+      Value<bool> isSynced,
       Value<int> rowid,
     });
 
@@ -566,6 +899,16 @@ class $$SubscriptionsTableFilterComposer
     column: $table.isDeleted,
     builder: (column) => ColumnFilters(column),
   );
+
+  ColumnFilters<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnFilters(column),
+  );
 }
 
 class $$SubscriptionsTableOrderingComposer
@@ -611,6 +954,16 @@ class $$SubscriptionsTableOrderingComposer
     column: $table.isDeleted,
     builder: (column) => ColumnOrderings(column),
   );
+
+  ColumnOrderings<DateTime> get updatedAt => $composableBuilder(
+    column: $table.updatedAt,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<bool> get isSynced => $composableBuilder(
+    column: $table.isSynced,
+    builder: (column) => ColumnOrderings(column),
+  );
 }
 
 class $$SubscriptionsTableAnnotationComposer
@@ -645,6 +998,12 @@ class $$SubscriptionsTableAnnotationComposer
 
   GeneratedColumn<bool> get isDeleted =>
       $composableBuilder(column: $table.isDeleted, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get updatedAt =>
+      $composableBuilder(column: $table.updatedAt, builder: (column) => column);
+
+  GeneratedColumn<bool> get isSynced =>
+      $composableBuilder(column: $table.isSynced, builder: (column) => column);
 }
 
 class $$SubscriptionsTableTableManager
@@ -685,6 +1044,8 @@ class $$SubscriptionsTableTableManager
                 Value<String> category = const Value.absent(),
                 Value<double> price = const Value.absent(),
                 Value<bool> isDeleted = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SubscriptionsCompanion(
                 id: id,
@@ -694,6 +1055,8 @@ class $$SubscriptionsTableTableManager
                 category: category,
                 price: price,
                 isDeleted: isDeleted,
+                updatedAt: updatedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           createCompanionCallback:
@@ -705,6 +1068,8 @@ class $$SubscriptionsTableTableManager
                 required String category,
                 required double price,
                 Value<bool> isDeleted = const Value.absent(),
+                Value<DateTime> updatedAt = const Value.absent(),
+                Value<bool> isSynced = const Value.absent(),
                 Value<int> rowid = const Value.absent(),
               }) => SubscriptionsCompanion.insert(
                 id: id,
@@ -714,6 +1079,8 @@ class $$SubscriptionsTableTableManager
                 category: category,
                 price: price,
                 isDeleted: isDeleted,
+                updatedAt: updatedAt,
+                isSynced: isSynced,
                 rowid: rowid,
               ),
           withReferenceMapper: (p0) => p0
@@ -750,10 +1117,159 @@ typedef $$SubscriptionsTableProcessedTableManager =
       SubscriptionRow,
       PrefetchHooks Function()
     >;
+typedef $$SyncMetadataTableCreateCompanionBuilder =
+    SyncMetadataCompanion Function({
+      required String key,
+      required String value,
+      Value<int> rowid,
+    });
+typedef $$SyncMetadataTableUpdateCompanionBuilder =
+    SyncMetadataCompanion Function({
+      Value<String> key,
+      Value<String> value,
+      Value<int> rowid,
+    });
+
+class $$SyncMetadataTableFilterComposer
+    extends Composer<_$AppDatabase, $SyncMetadataTable> {
+  $$SyncMetadataTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnFilters(column),
+  );
+}
+
+class $$SyncMetadataTableOrderingComposer
+    extends Composer<_$AppDatabase, $SyncMetadataTable> {
+  $$SyncMetadataTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<String> get key => $composableBuilder(
+    column: $table.key,
+    builder: (column) => ColumnOrderings(column),
+  );
+
+  ColumnOrderings<String> get value => $composableBuilder(
+    column: $table.value,
+    builder: (column) => ColumnOrderings(column),
+  );
+}
+
+class $$SyncMetadataTableAnnotationComposer
+    extends Composer<_$AppDatabase, $SyncMetadataTable> {
+  $$SyncMetadataTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<String> get key =>
+      $composableBuilder(column: $table.key, builder: (column) => column);
+
+  GeneratedColumn<String> get value =>
+      $composableBuilder(column: $table.value, builder: (column) => column);
+}
+
+class $$SyncMetadataTableTableManager
+    extends
+        RootTableManager<
+          _$AppDatabase,
+          $SyncMetadataTable,
+          SyncMetadataRow,
+          $$SyncMetadataTableFilterComposer,
+          $$SyncMetadataTableOrderingComposer,
+          $$SyncMetadataTableAnnotationComposer,
+          $$SyncMetadataTableCreateCompanionBuilder,
+          $$SyncMetadataTableUpdateCompanionBuilder,
+          (
+            SyncMetadataRow,
+            BaseReferences<_$AppDatabase, $SyncMetadataTable, SyncMetadataRow>,
+          ),
+          SyncMetadataRow,
+          PrefetchHooks Function()
+        > {
+  $$SyncMetadataTableTableManager(_$AppDatabase db, $SyncMetadataTable table)
+    : super(
+        TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$SyncMetadataTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$SyncMetadataTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$SyncMetadataTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<String> key = const Value.absent(),
+            Value<String> value = const Value.absent(),
+            Value<int> rowid = const Value.absent(),
+          }) => SyncMetadataCompanion(key: key, value: value, rowid: rowid),
+          createCompanionCallback:
+              ({
+                required String key,
+                required String value,
+                Value<int> rowid = const Value.absent(),
+              }) => SyncMetadataCompanion.insert(
+                key: key,
+                value: value,
+                rowid: rowid,
+              ),
+          withReferenceMapper: (p0) => p0
+              .map(
+                (e) => (
+                  e.readTable<$SyncMetadataTable, SyncMetadataRow>(table),
+                  BaseReferences<
+                    _$AppDatabase,
+                    $SyncMetadataTable,
+                    SyncMetadataRow
+                  >(db, table, e),
+                ),
+              )
+              .toList(),
+          prefetchHooksCallback: null,
+        ),
+      );
+}
+
+typedef $$SyncMetadataTableProcessedTableManager =
+    ProcessedTableManager<
+      _$AppDatabase,
+      $SyncMetadataTable,
+      SyncMetadataRow,
+      $$SyncMetadataTableFilterComposer,
+      $$SyncMetadataTableOrderingComposer,
+      $$SyncMetadataTableAnnotationComposer,
+      $$SyncMetadataTableCreateCompanionBuilder,
+      $$SyncMetadataTableUpdateCompanionBuilder,
+      (
+        SyncMetadataRow,
+        BaseReferences<_$AppDatabase, $SyncMetadataTable, SyncMetadataRow>,
+      ),
+      SyncMetadataRow,
+      PrefetchHooks Function()
+    >;
 
 class $AppDatabaseManager {
   final _$AppDatabase _db;
   $AppDatabaseManager(this._db);
   $$SubscriptionsTableTableManager get subscriptions =>
       $$SubscriptionsTableTableManager(_db, _db.subscriptions);
+  $$SyncMetadataTableTableManager get syncMetadata =>
+      $$SyncMetadataTableTableManager(_db, _db.syncMetadata);
 }

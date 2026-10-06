@@ -1,6 +1,8 @@
+import 'package:drift/drift.dart' hide isNull;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
 import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/data/mappers/subscription_mapper.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
 
@@ -185,4 +187,87 @@ void main() {
       expect(await repository.watchAll().first, hasLength(2));
     });
   });
+
+  // Every user change must be stamped "changed now, not on the server yet",
+  // or the sync engine would never push it.
+  group('SYNC METADATA — local writes', () {
+    Future<SubscriptionRow> onlyRow() =>
+        db.select(db.subscriptions).getSingle();
+
+    Future<void> createNetflix() => repository.create(
+      name: 'Netflix',
+      billingCycle: BillingCycles.monthly,
+      dueDate: DateTime(2026, 10, 7),
+      category: 'Entertainment',
+      price: 9.99,
+    );
+
+    /// Simulates a successful push, so we can see later writes reset it.
+    Future<void> pretendSynced() => db
+        .update(db.subscriptions)
+        .write(const SubscriptionsCompanion(isSynced: Value(true)));
+
+    test('create: not synced, updatedAt = now', () async {
+      final before = DateTime.now();
+      await createNetflix();
+
+      final row = await onlyRow();
+      expect(row.isSynced, isFalse);
+      expect(row.updatedAt.isBefore(before), isFalse);
+    });
+
+    test(
+      'update: marks a synced row as unsynced and moves updatedAt',
+      () async {
+        await createNetflix();
+        await pretendSynced();
+        final original = await onlyRow();
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+
+        await repository.update(original.toEntity().copyWithPrice(12.5));
+
+        final row = await onlyRow();
+        expect(row.isSynced, isFalse);
+        expect(row.updatedAt.isAfter(original.updatedAt), isTrue);
+      },
+    );
+
+    test(
+      'delete: marks the tombstone as unsynced and moves updatedAt',
+      () async {
+        await createNetflix();
+        await pretendSynced();
+        final original = await onlyRow();
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+
+        await repository.delete(original.id);
+
+        final row = await onlyRow();
+        expect(row.isDeleted, isTrue);
+        expect(row.isSynced, isFalse);
+        expect(row.updatedAt.isAfter(original.updatedAt), isTrue);
+      },
+    );
+
+    test('updatedAt keeps millisecond precision (stored as text)', () async {
+      final precise = DateTime(2026, 10, 5, 9, 30, 15, 123);
+      await createNetflix();
+      await db
+          .update(db.subscriptions)
+          .write(SubscriptionsCompanion(updatedAt: Value(precise)));
+
+      expect((await onlyRow()).updatedAt, precise);
+    });
+  });
+}
+
+extension on Subscription {
+  Subscription copyWithPrice(double price) => Subscription(
+    id: id,
+    name: name,
+    billingCycle: billingCycle,
+    dueDate: dueDate,
+    category: category,
+    price: price,
+  );
 }

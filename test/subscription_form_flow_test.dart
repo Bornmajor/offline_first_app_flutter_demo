@@ -1,18 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
 
 import 'helpers/test_app.dart';
 import 'helpers/test_database.dart';
-
-class _SilentNetworkInfo implements NetworkInfo {
-  @override
-  Stream<NetworkStatus> watchStatus() => const Stream.empty();
-}
 
 void main() {
   late AppDatabase db;
@@ -30,9 +23,7 @@ void main() {
 
   testWidgets('Home → form → Save → new card appears on Home', (tester) async {
     useTallScreen(tester);
-    await tester.pumpWidget(
-      testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
-    );
+    await tester.pumpWidget(testApp(db, home: const HomePage()));
     await tester.pumpAndSettle();
     expect(find.textContaining('No subscriptions yet'), findsOneWidget);
 
@@ -67,9 +58,7 @@ void main() {
 
   testWidgets('invalid form does not write to the database', (tester) async {
     useTallScreen(tester);
-    await tester.pumpWidget(
-      testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
-    );
+    await tester.pumpWidget(testApp(db, home: const HomePage()));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Create subscription'));
     await tester.pumpAndSettle();
@@ -99,9 +88,7 @@ void main() {
           price: 9.99,
         ),
       );
-      await tester.pumpWidget(
-        testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
-      );
+      await tester.pumpWidget(testApp(db, home: const HomePage()));
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('Netflix'));

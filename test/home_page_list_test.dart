@@ -1,23 +1,12 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
 
 import 'helpers/test_app.dart';
 import 'helpers/test_database.dart';
-
-/// Network never reports, so the test focuses on the list only.
-class _SilentNetworkInfo implements NetworkInfo {
-  @override
-  Stream<NetworkStatus> watchStatus() => const Stream.empty();
-}
 
 void main() {
   late AppDatabase db;
@@ -26,9 +15,7 @@ void main() {
   tearDown(() => db.close());
 
   Future<void> pumpHome(WidgetTester tester) async {
-    await tester.pumpWidget(
-      testApp(db, home: HomePage(networkInfo: _SilentNetworkInfo())),
-    );
+    await tester.pumpWidget(testApp(db, home: const HomePage()));
     // Let the first Drift emission arrive and render.
     await tester.pump();
     await tester.pump();
@@ -118,9 +105,10 @@ void main() {
       );
       // Real reads from the test db, but delete always fails.
       await tester.pumpWidget(
-        RepositoryProvider<SubscriptionRepository>.value(
-          value: _DeleteFailsRepository(db.subscriptionsDao),
-          child: MaterialApp(home: HomePage(networkInfo: _SilentNetworkInfo())),
+        testApp(
+          db,
+          repository: _DeleteFailsRepository(db.subscriptionsDao),
+          home: const HomePage(),
         ),
       );
       await tester.pumpAndSettle();
