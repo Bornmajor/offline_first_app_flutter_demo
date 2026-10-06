@@ -141,6 +141,18 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
     )..where((t) => t.isSynced.equals(false))).get();
   }
 
+  /// LIVE number of rows waiting to be synced (for the "2 waiting" status).
+  ///
+  /// SQL: SELECT COUNT(id) FROM subscriptions WHERE is_synced = 0;
+  /// `.watchSingle()` re-runs it whenever the table changes.
+  Stream<int> watchUnsyncedCount() {
+    final count = subscriptions.id.count();
+    final query = selectOnly(subscriptions)
+      ..addColumns([count])
+      ..where(subscriptions.isSynced.equals(false));
+    return query.map((row) => row.read(count)!).watchSingle();
+  }
+
   /// One row by id, including deleted ones.
   Future<SubscriptionRow?> findById(String id) {
     return (select(

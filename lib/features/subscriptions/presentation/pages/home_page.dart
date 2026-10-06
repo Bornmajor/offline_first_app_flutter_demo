@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:dio/dio.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/subscription_form_page.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/net_status_topbar.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/sync_status_line.dart';
 
 /// Home screen — PAGE part: wiring only.
 ///
@@ -58,22 +58,6 @@ class _HomeViewState extends State<HomeView> {
   late final Stream<NetworkStatus> _networkStatus =
       (widget.networkInfo ?? NetworkInfo()).watchStatus();
 
-  /// TEMPORARY: runs one sync and reports the outcome (replaced in A5).
-  Future<void> _syncNow() async {
-    final syncService = context.read<SyncService>();
-    final messenger = ScaffoldMessenger.of(context);
-    String message;
-    try {
-      await syncService.sync();
-      message = 'Synced';
-    } on DioException catch (e) {
-      message = e.response == null
-          ? 'Offline: changes stay on this device until the next sync'
-          : 'Server error ${e.response!.statusCode}';
-    }
-    messenger.showSnackBar(SnackBar(content: Text(message)));
-  }
-
   /// DELETE: the dialog is a UI job, so it stays here in the View.
   /// The actual delete is the Cubit's job.
   Future<void> _confirmAndDelete(Subscription item) async {
@@ -117,7 +101,11 @@ class _HomeViewState extends State<HomeView> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Subscription tracker'),
+        // Title with the sync status underneath ("Synced", "Syncing…", …).
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [Text('Subscription tracker'), SyncStatusLine()],
+        ),
         actions: [
           StreamBuilder<NetworkStatus>(
             stream: _networkStatus,
@@ -129,13 +117,6 @@ class _HomeViewState extends State<HomeView> {
                 isOffline: snapshot.data == NetworkStatus.offline,
               );
             },
-          ),
-          // TEMPORARY: manual sync for testing. Replaced in A5 by
-          // automatic sync triggers and a sync status driven by a Cubit.
-          IconButton(
-            tooltip: 'Sync now',
-            icon: const Icon(Icons.sync),
-            onPressed: _syncNow,
           ),
         ],
       ),
@@ -215,6 +196,14 @@ class _SubscriptionList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pull down to sync now; the spinner stays until the sync finishes.
+    return RefreshIndicator(
+      onRefresh: () => context.read<SyncCubit>().syncNow(),
+      child: _buildCards(),
+    );
+  }
+
+  Widget _buildCards() {
     return ListView.builder(
       // Extra bottom space so the FAB doesn't cover the last card.
       padding: const EdgeInsets.only(bottom: 88.0),

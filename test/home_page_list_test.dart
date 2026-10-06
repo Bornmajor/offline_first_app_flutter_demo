@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
@@ -118,9 +117,10 @@ void main() {
       );
       // Real reads from the test db, but delete always fails.
       await tester.pumpWidget(
-        RepositoryProvider<SubscriptionRepository>.value(
-          value: _DeleteFailsRepository(db.subscriptionsDao),
-          child: MaterialApp(home: HomePage(networkInfo: _SilentNetworkInfo())),
+        testApp(
+          db,
+          repository: _DeleteFailsRepository(db.subscriptionsDao),
+          home: HomePage(networkInfo: _SilentNetworkInfo()),
         ),
       );
       await tester.pumpAndSettle();

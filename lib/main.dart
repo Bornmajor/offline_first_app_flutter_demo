@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
 import 'package:offline_first_app_flutter_demo/core/network/dio_client.dart';
+import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/remote/subscription_api.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
 
 void main() {
@@ -56,11 +58,19 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Flutter Offline First App',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-      home: const HomePage(),
+    // ONE SyncCubit for the whole app (above MaterialApp, so every page can
+    // read it). `lazy: false` creates it right away, and `..start()` turns
+    // on the automatic sync triggers as soon as the app opens.
+    return BlocProvider(
+      lazy: false,
+      create: (context) =>
+          SyncCubit(context.read<SyncService>(), NetworkInfo())..start(),
+      child: MaterialApp(
+        title: 'Flutter Offline First App',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
+        home: const HomePage(),
+      ),
     );
   }
 }

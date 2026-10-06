@@ -19,6 +19,10 @@ class SyncService {
 
   bool _isSyncing = false;
 
+  /// LIVE number of local changes not on the server yet. `distinct()` skips
+  /// repeats (e.g. 2 → 2), so listeners only hear about real changes.
+  Stream<int> watchPendingCount() => _dao.watchUnsyncedCount().distinct();
+
   /// Runs one full sync. Throws [DioException] if the server can't be reached;
   /// nothing is lost then: unsynced rows simply wait for the next sync.
   Future<void> sync() async {
