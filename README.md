@@ -7,7 +7,7 @@ optimization, and synchronization happens in the background.
 ## Documentation
 
 - [Tech Stack](docs/tech-stack.md) — recommended offline-first stack (Riverpod, Dio, Drift, Freezed, connectivity_plus, workmanager, flutter_secure_storage, talker) with architecture diagrams and usage notes.
-- [Offline-First Concepts](docs/offline-first-concepts.md) — the ideas behind this app (local source of truth, reactive reads, UUIDs, soft delete, migrations, repository mapping, DI, state management), each with a one-sentence summary and where it lives in the code.
+- [Offline-First Concepts](docs/offline-first-concepts.md) — the ideas behind this app (local source of truth, reactive reads, UUIDs, soft delete, migrations, repository mapping, DI, state management, sync), each with a one-sentence summary and where it lives in the code.
 
 ## Learning roadmap
 
@@ -16,7 +16,7 @@ optimization, and synchronization happens in the background.
 | 1 | Why Drift for offline-first | ✅ |
 | 2 | [Interacting with the local database — CRUD with Drift + UI](#part-2--interacting-with-the-local-database-drift) | ✅ |
 | 3 | [State management with Cubit on top of the same data layer](#part-3--state-management-with-cubit) | ✅ |
-| 4 | Offline sync mechanism (push/pull with a server) | ⏳ |
+| 4 | [Offline sync with a server (push + pull)](#part-4--offline-sync-with-the-server) | ✅ |
 
 ## Architecture
 
@@ -34,35 +34,47 @@ optimization, and synchronization happens in the background.
         │                                       ▲ .watch() re-emits on every change
         ▼                                       │
  AppDatabase → SQLite file    source of truth
+        ▲
+        │ push / pull (in the background)
+ SyncService ◄──► SubscriptionApi ◄──► Express server
+        ▲
+ SyncCubit                    decides WHEN to sync, shows the status
 ```
 
 **Core idea:** everything *writes* to the database; nothing tells anything
 else to refresh. `SubscriptionListCubit` listens to `watchAll()`, a Drift
 stream that re-emits whenever the `subscriptions` table changes — whoever
-changed it (the form, a delete, and later the sync engine).
+changed it (the form, a delete, or the sync engine).
 
 ## Project structure
 
 ```
 lib/
-├── main.dart                          # Composition root: one AppDatabase + RepositoryProvider
+├── main.dart                          # Composition root: database, Dio, SyncService, providers
 ├── core/
-│   ├── database/app_database.dart     # Drift database, schemaVersion, migrations
+│   ├── database/
+│   │   ├── app_database.dart          # Drift database, schemaVersion
+│   │   └── tables/sync_metadata_table.dart  # key/value store for the pull bookmark
 │   ├── enums/billing_cycles.dart
-│   ├── network/                       # online/offline indicator
+│   ├── network/
+│   │   ├── dio_client.dart            # ONE HTTP client: server address, API key, timeouts
+│   │   └── network_info.dart          # online/offline detection
 │   └── utils/                         # date formatting, form validators
 ├── shared/widgets/                    # reusable form widgets (text, dropdown, date, button)
 └── features/subscriptions/
     ├── data/
-    │   ├── local/subscriptions_table.dart     # table definition
-    │   ├── local/subscriptions_dao.dart       # CRUD queries
+    │   ├── local/subscriptions_table.dart     # table definition (+ sync columns)
+    │   ├── local/subscriptions_dao.dart       # CRUD queries + sync helpers
+    │   ├── remote/subscription_api.dart       # upload / delete / download + JSON
+    │   ├── sync/sync_service.dart             # sync() = push, then pull
     │   ├── mappers/subscription_mapper.dart   # SubscriptionRow ⇄ Subscription
-    │   └── subscription_repository.dart       # the only data API the app uses
+    │   └── subscription_repository.dart       # the only data API the screens use
     ├── domain/entities/subscription.dart
     └── presentation/
         ├── cubits/
         │   ├── subscription_list/             # READ + DELETE (home)
-        │   └── subscription_form/             # CREATE + UPDATE (form)
+        │   ├── subscription_form/             # CREATE + UPDATE (form)
+        │   └── sync/                          # WHEN to sync + sync status
         ├── pages/
         │   ├── home_page.dart                 # HomePage (provides cubit) + HomeView (draws)
         │   └── subscription_form_page.dart    # SubscriptionFormPage + SubscriptionFormView
@@ -177,13 +189,75 @@ cancels its database stream in `close()`).
 
 ---
 
+## Part 4 — Offline sync with the server
+
+**Goal:** keep working offline, and exchange changes with the
+[Subscription Tracker API](https://github.com/Bornmajor/subscription-tracker-app)
+(Express + MongoDB) whenever the server can be reached — without the screens
+knowing anything about the network.
+
+### One sync = push, then pull
+
+```
+sync()
+ ├─ PUSH  every row the server doesn't have yet (is_synced = 0)
+ │    deleted on the phone → DELETE /api/subscriptions/:id → remove the row
+ │    new / edited         → PUT    /api/subscriptions/:id → mark synced
+ │                           (or, if the server kept a newer version, take it)
+ └─ PULL  GET /api/subscriptions?updatedSince=<bookmark>
+      → save each change + the new bookmark (one transaction)
+```
+
+All of it lives in [`sync_service.dart`](lib/features/subscriptions/data/sync/sync_service.dart);
+[`subscription_api.dart`](lib/features/subscriptions/data/remote/subscription_api.dart)
+makes the three HTTP calls and converts JSON.
+
+### The rules
+
+| Rule | How |
+| --- | --- |
+| The phone creates ids offline | UUIDs; the server keeps the phone's id |
+| Every user change waits to be sent | Local writes set `updatedAt = now`, `isSynced = false` |
+| Last write wins | The server compares `updatedAt`; a pulled change never overwrites a *newer* unsynced local edit |
+| Deletes win | A deletion anywhere removes the record everywhere |
+| An edit during an upload isn't lost | `markSynced` only matches the `updatedAt` that was uploaded |
+| Only new changes are downloaded | The "bookmark" (`lastPulledAt`, the server's time) is stored in `sync_metadata` |
+| Offline loses nothing | Unsynced rows simply wait; the next sync sends them |
+
+### When it syncs (`SyncCubit`)
+
+On app start · ~2 s after a local change · when the connection comes back ·
+every 5 minutes · on pull-to-refresh or tapping the status line under the
+title ("Synced", "Syncing…", "2 changes waiting", "Offline").
+
+### Schema note
+
+Before adding the sync columns, the database schema was squashed back to a
+clean v1 (the app had no released users). Uninstall older dev builds once.
+
+---
+
 ## Running
+
+1. Start the [API server](https://github.com/Bornmajor/subscription-tracker-app)
+   (`npm run dev`, port 5000).
+2. Run the app with the server's API key (it is read at build time, never
+   stored in code):
 
 ```sh
 flutter pub get
 dart run build_runner build   # regenerate *.g.dart after changing tables/DAOs
-flutter run
+flutter run --dart-define=API_KEY=YOUR_KEY
 ```
+
+| Where the app runs | Server address |
+| --- | --- |
+| Android emulator | default (`http://10.0.2.2:5000`) |
+| Physical phone (same Wi-Fi) | `--dart-define=API_BASE_URL=http://YOUR_PC_IP:5000` |
+| Windows app / iOS simulator | `--dart-define=API_BASE_URL=http://localhost:5000` |
+
+Plain `http://` is allowed for Android debug builds and iOS local networking
+only. Without a reachable server the app still works fully offline.
 
 > Windows: building with plugins requires Developer Mode
 > (`start ms-settings:developers`).
@@ -197,10 +271,15 @@ flutter test
 Tests run against a real in-memory SQLite database
 (`test/helpers/test_database.dart`); widget tests wrap pages with
 `testApp()` (`test/helpers/test_app.dart`), which provides the repository
-the same way `main.dart` does.
+and an unstarted `SyncCubit` the same way `main.dart` does. Sync tests use an
+in-memory `FakeServer` (`test/helpers/fake_server.dart`) that follows the
+same rules as the real API.
 
 | File | Covers |
 | --- | --- |
+| `sync/sync_service_test.dart` | Push, pull, conflicts (last write wins, deletes win), edits during upload, offline |
+| `sync/subscription_api_json_test.dart` | JSON ⇄ row: plain due dates, UTC milliseconds, tombstones |
+| `cubits/sync_cubit_test.dart` | Status changes and each automatic sync trigger |
 | `cubits/subscription_list_cubit_test.dart` | Loading → success/failure, live updates, delete via the stream, delete errors reported once each |
 | `cubits/subscription_form_cubit_test.dart` | Create/update emit saving → success/failure, double-tap guard, retry after failure |
 | `subscription_repository_test.dart` | Each CRUD operation; live stream re-emits; soft delete keeps the row |

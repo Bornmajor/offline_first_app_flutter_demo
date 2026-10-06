@@ -15,6 +15,7 @@ For the packages behind these ideas, see [Tech Stack](tech-stack.md).
 | [Repository and mapping](#6-repository-and-mapping) | The presentation layer (Cubits) talks only to a repository that converts database rows into domain entities, so storage details never leak into Cubits or widgets. |
 | [Dependency injection](#7-dependency-injection) | One database instance is created in `main()` and provided to the widget tree, so tests can swap in an in-memory database. |
 | [State management (Cubit)](#8-state-management-cubit) | Cubits turn the live database stream and user actions into immutable states, so widgets only draw state while the database stays the single source of truth. |
+| [Sync: push, pull, bookmark](#9-sync-push-pull-and-the-bookmark) | One sync first pushes every local change the server doesn't have, then pulls every change made elsewhere since the last bookmark; conflicts go to the newest change, and deletions always win. |
 
 ---
 
@@ -128,8 +129,9 @@ sync.
   edit can't revive a deleted record
 - `toCompanion()` leaves `isDeleted` absent, so edits never touch the flag
 
-> Status: steps 1–2 of the lifecycle are implemented. Pushing deletions and
-> the final hard delete come with the sync engine.
+> Status: the whole lifecycle is implemented. `SyncService` pushes the
+> deletion, then hard-deletes the tombstone; deletions made elsewhere arrive
+> through the pull and are removed locally too.
 
 ---
 
@@ -258,3 +260,52 @@ Rules this app follows:
 - Page/View split: `HomePage` / `SubscriptionFormPage` create the Cubit;
   `HomeView` / `SubscriptionFormView` draw it
 - Tests: `test/cubits/` (with `bloc_test`)
+
+---
+
+## 9. Sync: push, pull, and the bookmark
+
+**In one sentence:** one sync first pushes every local change the server
+doesn't have, then pulls every change made elsewhere since the last
+bookmark; conflicts go to the newest change, and deletions always win.
+
+**Why it matters offline:** the phone keeps working without a connection,
+so changes pile up on both sides (this phone, other phones, the dashboard).
+Sync is how they meet again — without losing or duplicating anything.
+
+```
+sync()
+ ├─ 1. PUSH  rows with is_synced = 0
+ │     deleted → DELETE → remove the tombstone
+ │     new/edited → PUT → mark synced (or take the server's newer version)
+ └─ 2. PULL  changes since the bookmark
+       → save them + the new bookmark, together
+```
+
+| Idea | In one line |
+| --- | --- |
+| **Push first** | Our changes reach the server before we download, so the pull can't overwrite them. |
+| **`isSynced` flag** | `false` = "the server doesn't have this version yet". Every local write sets it; a successful push clears it. |
+| **Bookmark** (`lastPulledAt`) | The server's time of the last download, so the next one only asks for newer changes. Saved in the same transaction as the pulled rows. |
+| **Last write wins** | Both sides edited the same record → the edit with the later `updatedAt` is kept. |
+| **Deletes win** | A record deleted anywhere is deleted everywhere, even if edited elsewhere later. |
+| **Safe retries** | Same id, same data → sending twice gives the same result, so a lost response can't create duplicates. |
+| **Server time vs device time** | `updatedAt` (device clock) decides conflicts; the bookmark uses the server's clock, so a wrong phone clock can't make a pull miss changes. |
+
+**When to sync** is a separate question from **how**: `SyncCubit` triggers
+`SyncService.sync()` on app start, shortly after a local change, when the
+connection returns, every 5 minutes, and on pull-to-refresh.
+
+**In the code:**
+- `SyncService` (`data/sync/sync_service.dart`) — push, pull, and the one
+  rule for applying a server version
+- `SubscriptionApi` (`data/remote/subscription_api.dart`) — the three HTTP
+  calls and the JSON format
+- `SubscriptionsDao` SYNC section — `getUnsynced`, `markSynced`,
+  `saveFromServer`, `hardDelete`, bookmark get/set
+- `SyncCubit` (`presentation/cubits/sync/`) — triggers and status
+- Tests: `test/sync/` with an in-memory `FakeServer`, and
+  `test/cubits/sync_cubit_test.dart`
+
+**Not covered yet:** syncing while the app is closed (`workmanager`, see
+[Tech Stack](tech-stack.md)), which needs its own isolate and database setup.
