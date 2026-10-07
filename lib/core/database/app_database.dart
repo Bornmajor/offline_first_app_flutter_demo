@@ -51,6 +51,28 @@ class AppDatabase extends _$AppDatabase {
   /// `drift_flutter` picks the right SQLite setup per platform and stores
   /// the file in the app's documents folder.
   static QueryExecutor _openConnection() {
-    return driftDatabase(name: 'subscriptions_db');
+    return driftDatabase(
+      name: 'subscriptions_db',
+      native: DriftNativeOptions(
+        // The app and the background sync task (WorkManager) may use the
+        // database at the same time. Within one Flutter engine, this makes
+        // them share ONE connection (no "database is locked", and live
+        // queries see each other's changes).
+        shareAcrossIsolates: true,
+        // A background task can also run in its own engine, with its own
+        // connection. These SQLite settings make two connections safe:
+        //   WAL          → readers don't block the writer
+        //   busy_timeout → wait up to 5 s for a lock instead of failing
+        setup: (db) {
+          db.execute('PRAGMA journal_mode = WAL;');
+          db.execute('PRAGMA busy_timeout = 5000;');
+        },
+      ),
+    );
   }
+
+  /// Tells live queries (`watchAll()`…) to re-run, for changes made by
+  /// ANOTHER engine (a background sync while the app was paused), which
+  /// Drift can't notice on its own. Called when the app comes back.
+  void refreshLiveQueries() => markTablesUpdated([subscriptions]);
 }
