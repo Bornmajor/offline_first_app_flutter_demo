@@ -170,7 +170,8 @@ lib/
 | 4 | [Offline sync with the server (push + pull, automatic triggers)](#part-4--offline-sync-with-the-server) | ✅ Done (while the app is open) |
 | — | Verify sync end-to-end against the live API | ⏳ Pending |
 | — | Data-layer naming cleanup (local/remote data sources, models) | ⏳ Planned |
-| 5 | Background sync while the app is closed (`workmanager`) | ⏳ Planned — last stage ([plan](docs/sync-flows.md#not-covered-yet--sync-while-the-app-is-closed)) |
+| 5 | Background sync while the app is closed (`workmanager`) — Android first | ⏳ Next ([plan](docs/sync-flows.md#not-covered-yet--sync-while-the-app-is-closed)) |
+| — | Notifications for background sync (e.g. "changes couldn't be uploaded for 2 days") with `flutter_local_notifications` | 💡 Future — once the app is bigger ([note](docs/sync-flows.md#future-notifications-for-background-sync)) |
 
 ## Documentation
 
@@ -339,7 +340,7 @@ title ("Synced", "Syncing…", "2 changes waiting", "Offline").
 | --- | --- |
 | App opened with no internet | Everything still works from SQLite; the sync attempt fails fast and shows "Offline · N changes waiting" |
 | Edited offline, app closed, reopened later | Changes are rows with `is_synced = 0` in SQLite, so they survive closing and reboots; uploaded on the next open while online |
-| Edited offline and the app is **never** reopened | ⚠️ Not solved yet — stays on the phone. Planned: background sync with `workmanager` (last stage) |
+| Edited offline and the app is **never** reopened | ⚠️ Not solved yet — stays on the phone. Planned in Part 5: see "Background sync" below |
 | Connection comes back while the app is open | `NetworkInfo` reports *online* → sync runs immediately |
 | Internet works but the server is down | Treated as offline; the 5-minute timer or pull-to-refresh retries |
 | Fresh install while offline | Shows only what's created on the phone; the first successful sync downloads the rest |
@@ -369,6 +370,17 @@ title ("Synced", "Syncing…", "2 changes waiting", "Offline").
 | A phone with a wrong clock | The bookmark uses the server's time, so pulls never miss changes (conflict decisions still trust device time — known limitation) |
 | Two edits within the same second | Dates stored with milliseconds, so they stay distinguishable |
 | Due date shifting a day across time zones | Sent as a plain date (`2026-10-07`), not a timestamp |
+
+**Background sync (Part 5 — planned, not built yet)**
+
+| Edge case | How it will be solved |
+| --- | --- |
+| Edited offline, app closed and never reopened | A WorkManager task "sync when connected" is queued when the app leaves the screen; the OS runs it once there's internet, even if the app is closed |
+| App and background task syncing at the same time | Lifecycle handoff: the app syncs only while visible, the background task only while it isn't |
+| App killed (the OS gives no warning) | The app renews a heartbeat (`foregroundActiveUntil`) every minute while visible; the background task syncs only once it has expired |
+| Periodic background task fires while the app is open | Same heartbeat check — the task skips |
+| A brief overlap at the moment of switching | Harmless: uploads are safe to repeat, last write wins, and the database is shared across isolates |
+| Returning to the app from another app | New trigger: sync as soon as the app is resumed |
 
 **Step-by-step walkthroughs** of upload, download, triggers, offline cases
 and conflicts: [docs/sync-flows.md](docs/sync-flows.md).

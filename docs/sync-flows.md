@@ -305,3 +305,65 @@ void callbackDispatcher() {
 the next time the app opens online. It matters when **other devices** (or the
 dashboard) should see changes made on this phone without waiting for the user
 to reopen the app.
+
+### Planned: never sync in the foreground and the background at once
+
+The app (`SyncCubit`) and the background task (WorkManager) each run their
+own `SyncService` in a different isolate, so the in-memory `_isSyncing` guard
+can't see the other side. The rule is: **the app syncs while it is visible;
+the background task syncs only while it is not** — including after the app
+was killed.
+
+**1. Hand over on the app lifecycle** (`AppLifecycleListener`)
+
+| App becomes | Action |
+| --- | --- |
+| Visible (*resumed*) | Cancel the queued background task → turn `SyncCubit` triggers on → sync now |
+| Not visible (*paused*) | Turn `SyncCubit` timers off → queue the one-off "sync when connected" task |
+
+**2. A heartbeat, because "killed" can't be detected**
+
+The OS never announces that it killed the app, and the periodic background
+task can fire while the app is open. So while visible, the app writes
+`foregroundActiveUntil = now + 2 min` to `sync_metadata` every minute. The
+background task checks it first:
+
+```dart
+final activeUntil = await dao.getForegroundActiveUntil();
+if (activeUntil != null && activeUntil.isAfter(DateTime.now())) {
+  return true;            // the app is open and syncing itself → skip
+}
+await syncService.sync(); // app in the background or killed → our turn
+```
+
+A killed app stops renewing the heartbeat, so it **expires by itself** and
+background sync is allowed again. (A plain "app is open" flag would stay
+stuck after a crash.)
+
+**3. Safe overlap as the last resort**
+
+In the few seconds around a switch both sides could still overlap. That's
+harmless: uploads are safe to repeat (same id → update, no duplicate),
+last-write-wins still decides conflicts, and the database is opened in
+shared mode (`shareAcrossIsolates`) so the two isolates don't lock each other.
+
+**Timeline**
+
+| Time | Event | Who syncs |
+| --- | --- | --- |
+| 10:00 | App open, heartbeat "until 10:02" | App |
+| 10:01 | Periodic task fires, heartbeat fresh | Nobody extra — task skips |
+| 10:03 | User switches to another app | Timers off, one-off task queued |
+| 10:04 | Phone gets internet | Background (heartbeat expired) |
+| 10:10 | Android kills the app (no callback) | — |
+| 10:30 | Periodic task fires | Background (heartbeat long expired) |
+| 11:00 | User opens the app | App (queued task cancelled, heartbeat renewed) |
+
+### Future: notifications for background sync
+
+`workmanager` runs code only; it has no notification interface. Showing one
+(e.g. "3 changes couldn't be uploaded for 2 days") is a separate piece, usually
+`flutter_local_notifications`, initialised inside the background isolate and
+needing notification permission (Android 13+ and iOS). Routine sync should
+stay silent; notifications are planned for later, once the app is bigger and
+has events worth telling the user about.
