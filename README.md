@@ -410,6 +410,10 @@ clean v1 (the app had no released users). Uninstall older dev builds once.
 flutter test
 ```
 
+On GitHub, the [CI workflow](.github/workflows/ci.yml) runs on every pull
+request (and push to `main`): it checks the generated Drift code is up to
+date, then runs `flutter analyze` and `flutter test`.
+
 Tests run against a real in-memory SQLite database
 (`test/helpers/test_database.dart`); widget tests wrap pages with
 `testApp()` (`test/helpers/test_app.dart`), which provides the repository

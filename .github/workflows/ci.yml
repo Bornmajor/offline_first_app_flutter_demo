@@ -1,0 +1,52 @@
+# Runs static analysis and the test suite on every pull request
+# (opened, new commits pushed, reopened), and on pushes to main.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A newer push to the same PR cancels the run that's still going.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: Analyze and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v4
+
+      # Same Flutter version as local development (see README prerequisites).
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: 3.47.2
+          cache: true
+
+      # Tests run against a real in-memory SQLite database (Drift).
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Install packages
+        run: flutter pub get
+
+      # The Drift *.g.dart files are committed. Regenerate them and fail if
+      # they differ — that means a table/DAO changed without re-running
+      # `dart run build_runner build`.
+      - name: Check generated Drift code is up to date
+        run: |
+          dart run build_runner build
+          git diff --exit-code -- '*.g.dart'
+
+      - name: Analyze
+        run: flutter analyze
+
+      - name: Run tests
+        run: flutter test
