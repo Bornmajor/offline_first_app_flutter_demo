@@ -198,4 +198,27 @@ class SubscriptionsDao extends DatabaseAccessor<AppDatabase>
       SyncMetadataCompanion.insert(key: _lastPulledAtKey, value: serverTime),
     );
   }
+
+  // The "heartbeat": while the app is visible it keeps pushing this time
+  // ~2 minutes into the future. The background sync task skips while it's in
+  // the future (the app is syncing itself). If the app is killed, nobody
+  // renews it, so it expires by itself and background sync takes over.
+
+  static const _foregroundActiveUntilKey = 'app.foregroundActiveUntil';
+
+  Future<DateTime?> getForegroundActiveUntil() async {
+    final row = await (select(
+      syncMetadata,
+    )..where((t) => t.key.equals(_foregroundActiveUntilKey))).getSingleOrNull();
+    return row == null ? null : DateTime.parse(row.value);
+  }
+
+  Future<void> setForegroundActiveUntil(DateTime until) {
+    return into(syncMetadata).insertOnConflictUpdate(
+      SyncMetadataCompanion.insert(
+        key: _foregroundActiveUntilKey,
+        value: until.toUtc().toIso8601String(),
+      ),
+    );
+  }
 }

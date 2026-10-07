@@ -307,5 +307,8 @@ connection returns, every 5 minutes, and on pull-to-refresh.
 - Tests: `test/sync/` with an in-memory `FakeServer`, and
   `test/cubits/sync_cubit_test.dart`
 
-**Not covered yet:** syncing while the app is closed (`workmanager`, see
-[Tech Stack](tech-stack.md)), which needs its own isolate and database setup.
+**While the app is closed:** a `workmanager` task runs the same `sync()` in
+its own isolate (Android; iOS configured but untested). The app and the
+background task hand over on pause/resume, and a foreground heartbeat stops
+them syncing at the same time — see
+[Sync Flows → Background sync](sync-flows.md#background-sync-part-5).

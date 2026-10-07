@@ -6,6 +6,7 @@ import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/background_sync.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_state.dart';
@@ -21,8 +22,23 @@ class _ControllableNetwork implements NetworkInfo {
   Stream<NetworkStatus> watchStatus() => controller.stream;
 }
 
+/// Records what SyncCubit asks the OS to do (no real WorkManager in tests).
+class _FakeBackgroundSync implements BackgroundSyncScheduler {
+  final calls = <String>[];
+
+  @override
+  Future<void> initialize() async => calls.add('initialize');
+
+  @override
+  Future<void> scheduleSoon() async => calls.add('scheduleSoon');
+
+  @override
+  Future<void> cancelScheduled() async => calls.add('cancelScheduled');
+}
+
 void main() {
   late AppDatabase db;
+  late _FakeBackgroundSync background;
   late FakeServer server;
   late _ControllableNetwork network;
   late SyncCubit cubit;
@@ -31,9 +47,11 @@ void main() {
     db = createTestDatabase();
     server = FakeServer();
     network = _ControllableNetwork();
+    background = _FakeBackgroundSync();
     cubit = SyncCubit(
       SyncService(db.subscriptionsDao, server),
       network,
+      backgroundSync: background,
       // Tiny timers so tests run in real time, fast.
       debounce: const Duration(milliseconds: 20),
       interval: const Duration(hours: 1),
@@ -136,5 +154,76 @@ void main() {
 
       expect(cubit.state.status, SyncStatus.offline);
     });
+  });
+
+  // ─────────── app lifecycle: hand over to background sync and back ───────────
+
+  group('app lifecycle', () {
+    Future<DateTime?> heartbeat() =>
+        db.subscriptionsDao.getForegroundActiveUntil();
+
+    test(
+      'start: registers background sync and writes a fresh heartbeat',
+      () async {
+        cubit.start();
+        await settle();
+
+        expect(background.calls, contains('initialize'));
+        expect((await heartbeat())!.isAfter(DateTime.now()), isTrue);
+      },
+    );
+
+    test(
+      'paused with changes waiting: heartbeat expires, background queued',
+      () async {
+        server.offline = true; // so the change stays waiting
+        cubit.start();
+        await userCreates('Netflix');
+        await settle();
+
+        await cubit.appPaused();
+
+        expect((await heartbeat())!.isAfter(DateTime.now()), isFalse);
+        expect(background.calls, contains('scheduleSoon'));
+      },
+    );
+
+    test('paused with nothing waiting: no background task queued', () async {
+      cubit.start();
+      await settle();
+
+      await cubit.appPaused();
+
+      expect(background.calls, isNot(contains('scheduleSoon')));
+    });
+
+    test('while paused, the app does not sync (background\'s job)', () async {
+      cubit.start();
+      await settle();
+      await cubit.appPaused();
+
+      await userCreates('Netflix'); // e.g. a change finishing just now
+      network.controller.add(NetworkStatus.online);
+      await settle();
+
+      expect(server.records, isEmpty); // no foreground sync happened
+    });
+
+    test(
+      'resumed: cancels the queued task, renews heartbeat, syncs now',
+      () async {
+        cubit.start();
+        await settle();
+        await cubit.appPaused();
+        await userCreates('Netflix');
+
+        cubit.appResumed();
+        await settle();
+
+        expect(background.calls, contains('cancelScheduled'));
+        expect((await heartbeat())!.isAfter(DateTime.now()), isTrue);
+        expect(server.records, hasLength(1)); // synced on resume
+      },
+    );
   });
 }

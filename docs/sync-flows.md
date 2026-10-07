@@ -13,7 +13,8 @@ the code that does it.
 - [Flow 4 — What triggers a sync](#flow-4--what-triggers-a-sync)
 - [Flow 5 — Offline scenarios](#flow-5--offline-scenarios)
 - [Flow 6 — Conflicts: protecting newer local data](#flow-6--conflicts-protecting-newer-local-data)
-- [Not covered yet — sync while the app is closed](#not-covered-yet--sync-while-the-app-is-closed)
+- [Background sync (Part 5)](#background-sync-part-5)
+- [Testing background sync on Android](#testing-background-sync-on-android)
 
 ---
 
@@ -169,15 +170,17 @@ never make a pull miss changes.
 ## Flow 4 — What triggers a sync
 
 `SyncCubit.start()` runs once when the app opens and sets up every trigger.
-`SyncService` never syncs on its own.
+`SyncService` never syncs on its own. Triggers 1–5 act **only while the app
+is on screen**; trigger 6 takes over when it isn't.
 
 | # | Trigger | How | Why |
 | --- | --- | --- | --- |
-| 1 | App opens | `syncNow()` inside `start()` | Send what was left waiting, fetch what changed while closed |
+| 1 | App opens, or comes back on screen | `syncNow()` in `start()` / `appResumed()` | Send what was left waiting, fetch what changed meanwhile |
 | 2 | A local change | pending count goes **up** → wait 2 s → `syncNow()` | Several quick edits become one sync |
 | 3 | Connection comes back | `NetworkInfo` emits *online* → `syncNow()` | Send changes made while offline |
 | 4 | Timer | every 5 minutes → `syncNow()` | Pick up changes made on other devices |
 | 5 | The user | pull-to-refresh on the list, or tap the status line | "Sync now" |
+| 6 | App **not** on screen (switched away, closed, killed) | WorkManager runs `runBackgroundSync()` — see [Background sync](#background-sync-part-5) | Send changes left behind; catch up while closed |
 
 Guards:
 - Only **one** sync runs at a time (`_isSyncing` in `SyncService`, and the
@@ -207,9 +210,11 @@ Guards:
    - **Now online** → trigger 1 (app opens) pushes them right away.
    - **Still offline** → scenario A: they keep waiting, and are sent as soon
      as the connection returns while the app is open.
-3. **The gap:** if the user **never reopens** the app, the changes stay on the
-   phone and never reach the server — other devices won't see them. Closing
-   this gap needs background sync (see the last section).
+3. **If the user never reopens the app:** when it left the screen, a
+   background task "sync when connected" was queued. Android runs it once
+   there's internet — even with the app closed — and the changes reach the
+   server (see [Background sync](#background-sync-part-5)). On iOS this is
+   best-effort; otherwise they're sent on the next open.
 
 ### C. The connection drops in the middle of a sync
 1. Rows already uploaded were marked synced; the rest keep `is_synced = 0`.
@@ -256,52 +261,194 @@ Three layers stop a download from overwriting newer local work:
 
 ---
 
-## Not covered yet — sync while the app is closed
+## Background sync (Part 5)
 
-Everything above runs **while the app is open**. Scenario B.3 shows the gap:
-changes made offline reach the server only when the user opens the app again.
+Flows 1–6 run **while the app is open**. Background sync covers the rest:
+changes left behind when the user leaves the app reach the server **even if
+the app is closed or killed**, and changes made elsewhere are picked up
+roughly every 30 minutes.
 
-**Plan (Part 5): background sync with `workmanager`**
+It uses [`workmanager`](https://pub.dev/packages/workmanager)
+(Android WorkManager / iOS BGTaskScheduler) and runs the **same**
+`SyncService.sync()` — background sync is just another trigger.
 
-| Platform | What the OS offers | What we'd use it for |
+| Piece | File | Job |
 | --- | --- | --- |
-| Android | WorkManager: runs tasks after the app is closed, survives reboots, supports "only when connected" | **(a)** a one-off task "sync when connected", queued after each local change · **(b)** a periodic task (minimum every 15 min) to pull |
-| iOS | BGTaskScheduler: the system decides **if and when** (often hours later, based on usage) | Opportunistic refresh only — don't rely on it |
+| `callbackDispatcher()` | `lib/features/subscriptions/data/sync/background_sync.dart` | Entry point the OS calls in a fresh isolate |
+| `runBackgroundSync()` | same | Opens its own database, checks the heartbeat, runs `sync()`, returns true/false |
+| `BackgroundSyncScheduler` | same | Registers the periodic task; queues/cancels the one-off task |
+| `SyncCubit.appPaused()` / `appResumed()` | `presentation/cubits/sync/sync_cubit.dart` | The handoff between the app and the background |
+| `SyncLifecycleListener` | `presentation/widgets/sync_lifecycle_listener.dart` | Forwards Flutter's pause/resume events to `SyncCubit` |
 
-How it would work:
-1. After a local change, queue **one** unique task "sync-pending" with the
-   constraint *network connected* (replacing any queued one).
-   The OS runs it as soon as the phone is online — even if the app is closed.
-2. Register a periodic task (every 15–30 min, network connected) to pull.
-3. The task runs in a **separate isolate** (a separate Dart memory space): it
-   can't use the app's objects, so it builds its own `AppDatabase`, Dio client
-   and `SyncService`, runs `sync()`, and returns success/failure.
-4. The app and the background task may open the same database file at the
-   same time, so the database must be opened in **shared mode**
-   (Drift's `shareAcrossIsolates`) to avoid conflicting writers.
-5. `SyncService` stays exactly the same — background sync is just another
-   *trigger*.
+### The two background tasks
+
+| Task | When it's queued | When it runs | Cancelled? |
+| --- | --- | --- | --- |
+| **One-off** "sync when connected" | When the app leaves the screen **with changes waiting** | As soon as there's internet — even if the app is closed | Yes, when the app comes back (the app syncs itself) |
+| **Periodic** "sync every ~30 min" | Once, at app start (keeps its schedule across launches) | Roughly every 30 min with internet — Android decides the exact moment; iOS treats it as a hint | **Never** — it must survive the app being killed; while the app is open it simply skips |
+
+Both require internet, and a failed run returns `false` so the OS retries
+later with growing delays (backoff).
+
+### Step by step: the user edits offline and closes the app
+
+1. The user edits a subscription in airplane mode → saved, `is_synced = 0`
+   (Flow 1).
+2. They switch away → `appPaused()`:
+   - foreground timers stop,
+   - the heartbeat is set to "expired now",
+   - changes are waiting → the one-off task is queued.
+3. They swipe the app away. Nothing is lost — the task is queued with the OS.
+4. Airplane mode goes off → Android starts a **fresh Dart isolate** and calls
+   `callbackDispatcher()` → `runBackgroundSync()`:
+   1. opens its own `AppDatabase`, Dio client and `SyncService`,
+   2. heartbeat expired → its turn,
+   3. `sync()` → push, then pull (Flows 2–3),
+   4. returns `true` (or `false` → retried later),
+   5. closes the database.
+5. The change is on the server; the dashboard and other devices see it.
+6. Later the user opens the app → `appResumed()` refreshes the list from the
+   database, so it already shows everything.
+
+### Never sync in the foreground and the background at once
+
+The app (`SyncCubit`) and the background task each run their own
+`SyncService` in a different isolate, so the in-memory `_isSyncing` guard
+can't see the other side. The rule is: **the app syncs while it is visible;
+the background task syncs only while it is not** — including after the app
+was killed.
+
+**1. Hand over on the app lifecycle** (`AppLifecycleListener`)
+
+| App becomes | Action |
+| --- | --- |
+| Visible (*resumed*) | Cancel the queued one-off task → refresh live queries → heartbeat on → `SyncCubit` triggers on → sync now |
+| Not visible (*paused*) | `SyncCubit` timers off → heartbeat expired → queue the one-off task if changes are waiting |
+
+**2. A heartbeat, because "killed" can't be detected**
+
+The OS never announces that it killed the app, and the periodic task can
+fire while the app is open. So while visible, the app writes
+`foregroundActiveUntil = now + 2 min` to `sync_metadata` every minute. The
+background task checks it first:
 
 ```dart
-// Sketch only — not implemented yet.
-@pragma('vm:entry-point') // keep this function in release builds
-void callbackDispatcher() {
-  Workmanager().executeTask((task, inputData) async {
-    final db = AppDatabase(); // opened in shared mode
-    try {
-      await SyncService(db.subscriptionsDao, SubscriptionApi(createDioClient()))
-          .sync();
-      return true;            // success
-    } catch (_) {
-      return false;           // the OS retries later (with backoff)
-    } finally {
-      await db.close();
-    }
-  });
+final activeUntil = await db.subscriptionsDao.getForegroundActiveUntil();
+if (activeUntil != null && activeUntil.isAfter(DateTime.now())) {
+  return true;            // the app is open and syncing itself → skip
 }
+await SyncService(db.subscriptionsDao, api).sync(); // our turn
 ```
 
-**Is it needed?** Not for the user's own data: it is never lost and is sent
-the next time the app opens online. It matters when **other devices** (or the
-dashboard) should see changes made on this phone without waiting for the user
-to reopen the app.
+A killed app stops renewing the heartbeat, so it **expires by itself** and
+background sync is allowed again. (A plain "app is open" flag would stay
+stuck after a crash.)
+
+**3. Safe overlap as the last resort**
+
+In the few seconds around a switch both sides could still overlap. That's
+harmless: uploads are safe to repeat (same id → update, no duplicate),
+last-write-wins still decides conflicts, and the database is set up for
+two users at once:
+
+| Setting (`app_database.dart`) | Why |
+| --- | --- |
+| `shareAcrossIsolates: true` | Within one engine, the app and the task share **one** connection |
+| `PRAGMA journal_mode = WAL` | A background task usually runs in its **own** engine (own connection); readers and a writer can then work together |
+| `PRAGMA busy_timeout = 5000` | A second writer waits up to 5 s for its turn instead of failing with "database is locked" |
+
+Because a change made by another engine can't notify the app's live
+queries, `appResumed()` calls `refreshLiveQueries()` so the list shows it.
+
+**Timeline**
+
+| Time | Event | Who syncs |
+| --- | --- | --- |
+| 10:00 | App open, heartbeat "until 10:02" | App |
+| 10:01 | Periodic task fires, heartbeat fresh | Nobody extra — task skips |
+| 10:03 | User switches to another app | Timers off, one-off task queued |
+| 10:04 | Phone gets internet | Background (heartbeat expired) |
+| 10:10 | Android kills the app (no callback) | — |
+| 10:30 | Periodic task fires | Background (heartbeat long expired) |
+| 11:00 | User opens the app | App (queued task cancelled, heartbeat renewed) |
+
+### Limits
+
+| Platform | What to expect |
+| --- | --- |
+| **Android** | Reliable, but timing is up to the OS: Doze, battery saver and rarely used apps get fewer runs. **Force stop** cancels all tasks until the app is opened again. Phone makers' battery managers (Infinix/Tecno, Xiaomi, Oppo…) may block it — see the settings below. |
+| **iOS** | Best-effort and **untested** (needs a Mac): iOS decides if and when to run, runs nothing after the user swipes the app away, and the one-off task only gets a short window right after leaving the app. The sync on the next app open still covers everything. Setup: `UIBackgroundModes` → `fetch` and `BGTaskSchedulerPermittedIdentifiers` in `ios/Runner/Info.plist`, registration in `ios/Runner/AppDelegate.swift`. |
+
+---
+
+## Testing background sync on Android
+
+Package name: `com.example.offline_first_app_flutter_demo`. Use a **debug**
+build (release blocks plain `http://`).
+
+### 1. See background runs in the log
+
+`runBackgroundSync()` prints one line per run:
+`Background sync done`, `… skipped: the app is in the foreground`, or
+`… failed, will retry: …`.
+
+```sh
+adb logcat -s flutter
+```
+
+### 2. The main scenario
+
+1. Start the API server and run the app on the phone (README → Getting started).
+2. Turn on **airplane mode**, create a subscription, then **swipe the app away**.
+3. Turn airplane mode **off** and wait a minute or two.
+4. The log shows `Background sync done`, and the subscription appears in the
+   dashboard — without opening the app.
+
+### 3. Don't want to wait? Force the task to run
+
+WorkManager schedules work through Android's JobScheduler. Find the app's
+job ids, then run one immediately (`-f` ignores constraints like "needs
+internet"):
+
+```sh
+adb shell dumpsys jobscheduler | grep -A2 offline_first_app_flutter_demo
+adb shell cmd jobscheduler run -f com.example.offline_first_app_flutter_demo JOB_ID
+```
+
+(On Windows without Git Bash, use `findstr offline_first_app_flutter_demo` instead of `grep`.)
+
+WorkManager can also print what it has scheduled (debug builds):
+
+```sh
+adb shell am broadcast -a "androidx.work.diagnostics.REQUEST_DIAGNOSTICS" -p "com.example.offline_first_app_flutter_demo"
+adb logcat -s WM-DiagnosticsWrkr
+```
+
+### 4. Simulate Doze (idle phone)
+
+```sh
+adb shell dumpsys deviceidle force-idle
+adb shell dumpsys deviceidle unforce
+```
+
+### 5. Infinix / XOS battery settings
+
+XOS can block background work for apps it considers unimportant. If
+background runs never appear in the log, allow the app to run in the
+background (menu names vary by XOS version):
+
+- **Settings → Apps → the app → Battery** → *Allow background activity* /
+  *No restrictions*
+- **Phone Master → Auto-start management** (or *App launch*) → enable the app
+- Turn off **Power saving / Ultra power saving** while testing
+- Avoid one-tap "clean / boost" in Phone Master — it can force-stop the app,
+  which cancels its scheduled work
+
+## Future: notifications for background sync
+
+`workmanager` runs code only; it has no notification interface. Showing one
+(e.g. "3 changes couldn't be uploaded for 2 days") is a separate piece, usually
+`flutter_local_notifications`, initialised inside the background isolate and
+needing notification permission (Android 13+ and iOS). Routine sync should
+stay silent; notifications are planned for later, once the app is bigger and
+has events worth telling the user about.

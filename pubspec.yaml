@@ -44,6 +44,7 @@ dependencies:
   flutter_bloc: ^9.1.1
   equatable: ^3.0.0
   dio: ^5.11.1
+  workmanager: ^0.10.10
 
 
 dev_dependencies:

@@ -69,6 +69,18 @@
 	<!-- Allow plain http:// to LOCAL network addresses only (localhost and
 	     LAN IPs), for the local Express sync server during development.
 	     Internet hosts still require HTTPS. -->
+	<!-- Background sync (workmanager), NOT yet tested on a real iPhone.
+	     "fetch" lets iOS wake the app for background refresh (BGAppRefreshTask);
+	     the identifier must match BackgroundSyncScheduler.periodicTaskId in
+	     Dart and the registration in AppDelegate.swift. -->
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+	</array>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>com.example.offline_first_app_flutter_demo.periodicSync</string>
+	</array>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>

@@ -23,6 +23,15 @@ class SyncService {
   /// repeats (e.g. 2 → 2), so listeners only hear about real changes.
   Stream<int> watchPendingCount() => _dao.watchUnsyncedCount().distinct();
 
+  /// Heartbeat for background sync: "the app is on screen and syncing
+  /// itself until [until]". Pass `DateTime.now()` to hand over right away.
+  Future<void> setForegroundActiveUntil(DateTime until) =>
+      _dao.setForegroundActiveUntil(until);
+
+  /// Re-runs live queries, to show changes a background sync made while
+  /// the app was paused (Drift can't notice changes from another engine).
+  void refreshLocalData() => _dao.attachedDatabase.refreshLiveQueries();
+
   /// Runs one full sync. Throws [DioException] if the server can't be reached;
   /// nothing is lost then: unsynced rows simply wait for the next sync.
   Future<void> sync() async {
