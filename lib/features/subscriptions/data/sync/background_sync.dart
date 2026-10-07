@@ -37,6 +37,7 @@ Future<bool> runBackgroundSync({
     // Heartbeat check: the app is visible and syncing itself → skip.
     final activeUntil = await db.subscriptionsDao.getForegroundActiveUntil();
     if (activeUntil != null && activeUntil.isAfter(DateTime.now())) {
+      //Avoid running background and foreground same time assuming there was background taks user open the app
       debugPrint('Background sync skipped: the app is in the foreground');
       return true;
     }

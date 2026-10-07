@@ -5,9 +5,11 @@ import 'package:offline_first_app_flutter_demo/core/network/dio_client.dart';
 import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/remote/subscription_api.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/background_sync.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
 import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
+import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/sync_lifecycle_listener.dart';
 
 void main() {
   // Required because we do work (create the database) before runApp().
@@ -60,16 +62,26 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     // ONE SyncCubit for the whole app (above MaterialApp, so every page can
     // read it). `lazy: false` creates it right away, and `..start()` turns
-    // on the automatic sync triggers as soon as the app opens.
+    // on the automatic sync triggers (and background sync) as soon as the
+    // app opens.
     return BlocProvider(
       lazy: false,
-      create: (context) =>
-          SyncCubit(context.read<SyncService>(), NetworkInfo())..start(),
-      child: MaterialApp(
-        title: 'Flutter Offline First App',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(colorScheme: .fromSeed(seedColor: Colors.deepPurple)),
-        home: const HomePage(),
+      create: (context) => SyncCubit(
+        context.read<SyncService>(),
+        NetworkInfo(),
+        backgroundSync: BackgroundSyncScheduler(),
+      )..start(),
+      // Hands sync to the background task when the app leaves the screen,
+      // and takes it back when the app returns.
+      child: SyncLifecycleListener(
+        child: MaterialApp(
+          title: 'Flutter Offline First App',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            colorScheme: .fromSeed(seedColor: Colors.deepPurple),
+          ),
+          home: const HomePage(),
+        ),
       ),
     );
   }
