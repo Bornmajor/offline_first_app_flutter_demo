@@ -14,6 +14,8 @@ optimization, and synchronization happens in the background.
 - Conflict handling: last write wins, deletions win, no duplicates on retry
 - Sync status in the app bar ("Synced", "Syncing…", "2 changes waiting",
   "Offline") and pull-to-refresh
+- Background sync (Android): changes made offline reach the server even if
+  the app is closed, once there's internet
 
 ## Tech stack
 
@@ -48,7 +50,9 @@ optimization, and synchronization happens in the background.
         │ push / pull (in the background)
  SyncService ◄──► SubscriptionApi ◄──► Express server
         ▲
- SyncCubit                    decides WHEN to sync, shows the status
+ SyncCubit                    WHEN to sync while the app is on screen + status
+        ⇅ handoff (pause / resume, heartbeat)
+ WorkManager task             WHEN to sync while the app is off screen or killed
 ```
 
 **Core idea:** everything *writes* to the database; nothing tells anything
@@ -146,6 +150,7 @@ lib/
     │   ├── local/subscriptions_dao.dart       # CRUD queries + sync helpers
     │   ├── remote/subscription_api.dart       # upload / delete / download + JSON
     │   ├── sync/sync_service.dart             # sync() = push, then pull
+    │   ├── sync/background_sync.dart          # WorkManager entry point + scheduler
     │   ├── mappers/subscription_mapper.dart   # SubscriptionRow ⇄ Subscription
     │   └── subscription_repository.dart       # the only data API the screens use
     ├── domain/entities/subscription.dart
@@ -157,7 +162,7 @@ lib/
         ├── pages/
         │   ├── home_page.dart                 # HomePage (provides cubit) + HomeView (draws)
         │   └── subscription_form_page.dart    # SubscriptionFormPage + SubscriptionFormView
-        └── widgets/
+        └── widgets/                           # cards, sync status line, lifecycle listener
 ```
 
 ## Status and roadmap
@@ -170,7 +175,7 @@ lib/
 | 4 | [Offline sync with the server (push + pull, automatic triggers)](#part-4--offline-sync-with-the-server) | ✅ Done (while the app is open) |
 | — | Verify sync end-to-end against the live API | ⏳ Pending |
 | — | Data-layer naming cleanup (local/remote data sources, models) | ⏳ Planned |
-| 5 | Background sync while the app is closed (`workmanager`) — Android first | ⏳ Next ([plan](docs/sync-flows.md#not-covered-yet--sync-while-the-app-is-closed)) |
+| 5 | [Background sync while the app is closed (`workmanager`)](docs/sync-flows.md#background-sync-part-5) | ✅ Done on Android · iOS configured but untested (needs a Mac) |
 | — | Notifications for background sync (e.g. "changes couldn't be uploaded for 2 days") with `flutter_local_notifications` | 💡 Future — once the app is bigger ([note](docs/sync-flows.md#future-notifications-for-background-sync)) |
 
 ## Documentation
@@ -328,9 +333,13 @@ makes the three HTTP calls and converts JSON.
 
 #### When it syncs (`SyncCubit`)
 
-On app start · ~2 s after a local change · when the connection comes back ·
-every 5 minutes · on pull-to-refresh or tapping the status line under the
-title ("Synced", "Syncing…", "2 changes waiting", "Offline").
+While the app is on screen: on app start or return · ~2 s after a local
+change · when the connection comes back · every 5 minutes · on
+pull-to-refresh or tapping the status line under the title ("Synced",
+"Syncing…", "2 changes waiting", "Offline").
+
+While it isn't (switched away, closed, killed): a WorkManager task — see
+[Background sync](docs/sync-flows.md#background-sync-part-5).
 
 #### Edge cases and how they're handled
 
@@ -340,7 +349,7 @@ title ("Synced", "Syncing…", "2 changes waiting", "Offline").
 | --- | --- |
 | App opened with no internet | Everything still works from SQLite; the sync attempt fails fast and shows "Offline · N changes waiting" |
 | Edited offline, app closed, reopened later | Changes are rows with `is_synced = 0` in SQLite, so they survive closing and reboots; uploaded on the next open while online |
-| Edited offline and the app is **never** reopened | ⚠️ Not solved yet — stays on the phone. Planned in Part 5: see "Background sync" below |
+| Edited offline and the app is **never** reopened | Background sync uploads it once there's internet (Android); see "Background sync" below |
 | Connection comes back while the app is open | `NetworkInfo` reports *online* → sync runs immediately |
 | Internet works but the server is down | Treated as offline; the 5-minute timer or pull-to-refresh retries |
 | Fresh install while offline | Shows only what's created on the phone; the first successful sync downloads the rest |
@@ -371,15 +380,18 @@ title ("Synced", "Syncing…", "2 changes waiting", "Offline").
 | Two edits within the same second | Dates stored with milliseconds, so they stay distinguishable |
 | Due date shifting a day across time zones | Sent as a plain date (`2026-10-07`), not a timestamp |
 
-**Background sync (Part 5 — planned, not built yet)**
+**Background sync (Part 5)**
 
-| Edge case | How it will be solved |
+| Edge case | How it's solved |
 | --- | --- |
 | Edited offline, app closed and never reopened | A WorkManager task "sync when connected" is queued when the app leaves the screen; the OS runs it once there's internet, even if the app is closed |
 | App and background task syncing at the same time | Lifecycle handoff: the app syncs only while visible, the background task only while it isn't |
 | App killed (the OS gives no warning) | The app renews a heartbeat (`foregroundActiveUntil`) every minute while visible; the background task syncs only once it has expired |
 | Periodic background task fires while the app is open | Same heartbeat check — the task skips |
-| A brief overlap at the moment of switching | Harmless: uploads are safe to repeat, last write wins, and the database is shared across isolates |
+| A brief overlap at the moment of switching | Harmless: uploads are safe to repeat and last write wins; the database uses a shared connection, WAL and a busy timeout so two users don't lock each other |
+| Background changed data while the app was paused in memory | On resume the app refreshes its live queries, so the list shows those changes |
+| Phone maker's battery manager (e.g. Infinix XOS) blocks background work | Not solvable in code — allow background activity in settings ([testing guide](docs/sync-flows.md#testing-background-sync-on-android)); the sync on the next app open still covers it |
+| iOS | Configured but untested; best-effort by design (iOS decides when, nothing after a swipe-away) |
 | Returning to the app from another app | New trigger: sync as soon as the app is resumed |
 
 **Step-by-step walkthroughs** of upload, download, triggers, offline cases
@@ -408,8 +420,9 @@ same rules as the real API.
 | File | Covers |
 | --- | --- |
 | `sync/sync_service_test.dart` | Push, pull, conflicts (last write wins, deletes win), edits during upload, offline |
+| `sync/background_sync_test.dart` | Background run: app closed, app in the foreground (skips), app killed (heartbeat expired), offline (retry) |
 | `sync/subscription_api_json_test.dart` | JSON ⇄ row: plain due dates, UTC milliseconds, tombstones |
-| `cubits/sync_cubit_test.dart` | Status changes and each automatic sync trigger |
+| `cubits/sync_cubit_test.dart` | Status changes, each automatic sync trigger, and the pause/resume handoff to background sync |
 | `cubits/subscription_list_cubit_test.dart` | Loading → success/failure, live updates, delete via the stream, delete errors reported once each |
 | `cubits/subscription_form_cubit_test.dart` | Create/update emit saving → success/failure, double-tap guard, retry after failure |
 | `subscription_repository_test.dart` | Each CRUD operation; live stream re-emits; soft delete keeps the row |

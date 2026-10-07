@@ -66,7 +66,12 @@ Future<bool> runBackgroundSync({
 class BackgroundSyncScheduler {
   static const _taskName = 'subscription-sync';
   static const _oneOffName = 'sync-pending';
-  static const _periodicName = 'periodic-sync';
+
+  /// Also the iOS BGTaskScheduler identifier: it must match
+  /// BGTaskSchedulerPermittedIdentifiers in ios/Runner/Info.plist and the
+  /// registration in ios/Runner/AppDelegate.swift (reverse-DNS style).
+  static const periodicTaskId =
+      'com.example.offline_first_app_flutter_demo.periodicSync';
 
   /// WorkManager exists on Android (and iOS, with extra setup). Elsewhere —
   /// Windows, web, tests — every method does nothing.
@@ -80,7 +85,7 @@ class BackgroundSyncScheduler {
     if (!_isSupported) return;
     await Workmanager().initialize(callbackDispatcher);
     await Workmanager().registerPeriodicTask(
-      _periodicName,
+      periodicTaskId,
       _taskName,
       frequency: const Duration(minutes: 30), // Android minimum is 15
       constraints: _needsInternet,
