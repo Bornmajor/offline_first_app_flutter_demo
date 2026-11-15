@@ -17,6 +17,13 @@ optimization, and synchronization happens in the background.
 - Background sync (Android): changes made offline reach the server even if
   the app is closed, once there's internet
 
+## Screenshots
+
+| Home | Edit: due date | Edit: category | After saving |
+| :---: | :---: | :---: | :---: |
+| <img src="docs/screenshots/home-list.jpg" width="200" alt="Home screen with two subscription cards and the sync status line"> | <img src="docs/screenshots/edit-due-date.jpg" width="200" alt="Date picker with past days disabled"> | <img src="docs/screenshots/edit-category.jpg" width="200" alt="Category dropdown on the edit form"> | <img src="docs/screenshots/home-after-edit.jpg" width="200" alt="Home screen after editing, list re-sorted by due date"> |
+| Subscriptions sorted by due date, with the sync status under the title | Past days can't be picked | Reusable form fields and validation | The list updates by itself and re-sorts; the change syncs in the background |
+
 ## Tech stack
 
 | Area | Tools |
