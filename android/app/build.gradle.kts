@@ -8,10 +8,15 @@ plugins {
 
 android {
     namespace = "com.bornmajor.offline_first_subscription_app"
-    compileSdk = flutter.compileSdkVersion
+    // 37+ is required by flutter_local_notifications 23 (and androidx.core
+    // 1.19). Only the SDK we compile against; targetSdk/minSdk are unchanged.
+    compileSdk = 37
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Required by flutter_local_notifications: lets newer Java APIs it
+        // uses (dates/times for scheduled notifications) run on older Android.
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -48,4 +53,9 @@ kotlin {
 
 flutter {
     source = "../.."
+}
+
+dependencies {
+    // The Java library backing core library desugaring (see compileOptions).
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
 }

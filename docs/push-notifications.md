@@ -18,6 +18,7 @@ built.
 - [Our reminder message](#our-reminder-message)
 - [The plan for this app](#the-plan-for-this-app)
 - [Step 2 — Firebase setup, permission, token](#step-2--firebase-setup-permission-token)
+- [Step 3 — Receive in every app state](#step-3--receive-in-every-app-state)
 
 ---
 
@@ -215,7 +216,7 @@ Phone
 | Step | What we build |
 | --- | --- |
 | 1 | This page ✅ |
-| 2 | Firebase project, permission, print the token, test message from the Firebase console |
+| 2 | Firebase project, permission, print the token, test message from the Firebase console ✅ |
 | 3 | Receive in foreground / background / terminated; the notification channel |
 | 4 | Register and refresh the token with our server; reminder-timing setting |
 | 5 | Server sends a notification with `firebase-admin` |
@@ -276,3 +277,53 @@ FCM token: cA1b2…long string…
 If nothing arrives: notification permission denied, the app was
 force-stopped (by Settings or a battery manager), or the phone has no
 Google Play services.
+
+---
+
+## Step 3 — Receive in every app state
+
+| App state | What happens | Code |
+| --- | --- | --- |
+| **Foreground** | Android shows nothing by itself, so we show it with `flutter_local_notifications` on our channel | `FirebaseMessaging.onMessage` → `_showWhileAppIsOpen()` |
+| **Background / closed** | The system shows it on our channel (pops up) | `firebaseMessagingBackgroundHandler` (top-level, own isolate) only logs |
+
+### Our notification channel
+
+```dart
+static const reminderChannel = AndroidNotificationChannel(
+  'subscription_reminders',          // id — the server sends this as channel_id
+  'Subscription reminders',          // name the user sees in Settings
+  description: 'Alerts before a subscription renews',
+  importance: Importance.high,       // high = pops up on screen
+);
+```
+
+- Created at every start (creating an existing channel does nothing).
+- `AndroidManifest.xml` makes it FCM's **default channel**, so messages that
+  don't name a channel (like Firebase console tests) use it too. Before this,
+  they went to Android's generic "Miscellaneous" channel, which doesn't pop up.
+- After the first install, Android owns the channel's settings: changing the
+  importance in code later has no effect unless the app is reinstalled or a new
+  channel id is used. The user can change it in Settings → Apps → Subscription
+  Tracker → Notifications.
+
+### Android build requirements of `flutter_local_notifications` 23
+
+| Requirement | Where |
+| --- | --- |
+| Core library desugaring (`isCoreLibraryDesugaringEnabled` + `desugar_jdk_libs`) | `android/app/build.gradle.kts` |
+| `compileSdk = 37` (only the compile SDK; target/min unchanged) | `android/app/build.gradle.kts` |
+| Android Gradle Plugin 9.1.1+ | `android/settings.gradle.kts` |
+
+### Try it
+
+Send a Firebase console test message:
+- **app open** → it pops up (shown by our code); the log shows `Push received in foreground`;
+- **app in the background** → it pops up (shown by the system); the log shows
+  `Push received in background`;
+- **app swiped away** → same as background.
+
+> Troubleshooting: if a build fails in a native step (e.g. stripping debug
+> symbols) after dependency changes, stop Gradle (`cd android && gradlew --stop`),
+> run `flutter clean`, and build again — a stale or locked build folder is the
+> usual cause on Windows.
