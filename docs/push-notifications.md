@@ -19,6 +19,7 @@ built.
 - [The plan for this app](#the-plan-for-this-app)
 - [Step 2 — Firebase setup, permission, token](#step-2--firebase-setup-permission-token)
 - [Step 3 — Receive in every app state](#step-3--receive-in-every-app-state)
+- [Step 4 — Register the device with our server](#step-4--register-the-device-with-our-server)
 
 ---
 
@@ -217,8 +218,8 @@ Phone
 | --- | --- |
 | 1 | This page ✅ |
 | 2 | Firebase project, permission, print the token, test message from the Firebase console ✅ |
-| 3 | Receive in foreground / background / terminated; the notification channel |
-| 4 | Register and refresh the token with our server; reminder-timing setting |
+| 3 | Receive in foreground / background / terminated; the notification channel ✅ (verified on a phone) |
+| 4 | Register and refresh the token with our server; reminder-timing setting ✅ |
 | 5 | Server sends a notification with `firebase-admin` |
 | 6 | Scheduled reminders + a test interface to send one any time |
 | 7 | Tap → open the subscription |
@@ -327,3 +328,42 @@ Send a Firebase console test message:
 > symbols) after dependency changes, stop Gradle (`cd android && gradlew --stop`),
 > run `flutter clean`, and build again — a stale or locked build folder is the
 > usual cause on Windows.
+
+---
+
+## Step 4 — Register the device with our server
+
+The server can only push to phones it knows, so the app sends its token —
+plus the user's reminder setting — to `POST /api/devices`.
+
+| Piece | File |
+| --- | --- |
+| Reminder setting: "1 day before" / "On the due date" | `lib/core/notifications/reminder_timing.dart` |
+| Saved locally (key/value table) | `lib/core/database/settings_dao.dart` |
+| `POST /api/devices` | `lib/core/notifications/device_api.dart` |
+| Only calls the server when something changed | `lib/core/notifications/device_registration.dart` |
+| Settings screen (bell icon on the home screen) | `lib/features/settings/presentation/pages/reminder_settings_page.dart` |
+
+**How it decides to call the server** — it remembers what the phone *wants*
+the server to know and what the server was *last told*:
+
+| Situation | Request? |
+| --- | --- |
+| App start, same token and setting | No |
+| New token (first install, Firebase refresh) | Yes |
+| User changes the reminder setting | Yes |
+| Offline when something changed | Not yet — retried on the next app start or when the connection is back |
+
+Server side: `Device` model (unique token, platform, reminderTiming,
+lastSeenAt), `POST`/`GET /api/devices`, `DELETE /api/devices/:token`.
+Posting the same token again updates that device instead of duplicating it.
+
+### Real-device findings so far
+
+- **App open:** the notification is shown by our code — works.
+- **Background:** shown by the system — works once the phone stops killing the app.
+- **Force-stopped by an OEM memory killer** (Infinix/XOS
+  `AppLmkdKillerScene` / `MemoryCleanFeature`): the log shows
+  `GCM: broadcast intent callback: result=CANCELLED` — Android refuses to
+  deliver to a force-stopped app. Lock the app in Recent apps / allow
+  background activity. A force stop also removes notifications already shown.

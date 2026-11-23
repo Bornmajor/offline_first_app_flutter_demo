@@ -4,6 +4,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:offline_first_subscription_app/core/notifications/device_registration.dart';
 
 /// Runs when a push arrives while the app is in the BACKGROUND or CLOSED.
 ///
@@ -28,8 +29,14 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
 ///   Step 2 — connect to Firebase, ask for permission, get the token
 ///   Step 3 — our notification channel; show pushes while the app is open;
 ///            background handler
-/// Later: send the token to our server (4), open a subscription on tap (7).
+///   Step 4 — send the token to our server (via DeviceRegistration)
+/// Later: open a subscription on tap (7).
 class PushNotificationService {
+  PushNotificationService({this.deviceRegistration});
+
+  /// Sends this phone's token (and reminder setting) to our server.
+  final DeviceRegistration? deviceRegistration;
+
   /// Android notification channel for reminders. Each notification belongs to
   /// a channel; the user can mute or tune each channel in system settings.
   /// High importance = it pops up on screen (heads-up), with sound.
@@ -105,13 +112,16 @@ class PushNotificationService {
       // ignore: deprecated_member_use
       final token = await messaging.getToken();
       debugPrint('FCM token: $token');
+      if (token != null) await deviceRegistration?.setToken(token);
 
       // 6. The token can change (reinstall, cleared data, Firebase rotating
-      //    it). Step 4 will send the new one to the server.
+      //    it): send the new one to the server, or it would push to a dead
+      //    address.
       // ignore: deprecated_member_use
-      messaging.onTokenRefresh.listen(
-        (newToken) => debugPrint('FCM token refreshed: $newToken'),
-      );
+      messaging.onTokenRefresh.listen((newToken) {
+        debugPrint('FCM token refreshed: $newToken');
+        deviceRegistration?.setToken(newToken);
+      });
 
       // 7. App OPEN (foreground): Android does NOT show push notifications
       //    by itself, so we show it ourselves on our channel.

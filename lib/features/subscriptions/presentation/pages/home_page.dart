@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:offline_first_subscription_app/features/settings/presentation/pages/reminder_settings_page.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/subscription_list/subscription_list_cubit.dart';
@@ -95,6 +96,15 @@ class _HomeViewState extends State<HomeView> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [Text('Subscription tracker'), SyncStatusLine()],
         ),
+        actions: [
+          IconButton(
+            tooltip: 'Reminders',
+            icon: const Icon(Icons.notifications_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const ReminderSettingsPage()),
+            ),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton.extended(
         label: const Text('Create subscription'),
