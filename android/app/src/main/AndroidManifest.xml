@@ -3,7 +3,7 @@
     <uses-permission android:name="android.permission.INTERNET"/>
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
     <application
-        android:label="offline_first_app_flutter_demo"
+        android:label="Subscription Tracker"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

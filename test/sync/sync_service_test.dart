@@ -1,10 +1,10 @@
 import 'package:dio/dio.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/sync/sync_service.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
 
 import '../helpers/fake_server.dart';
 import '../helpers/test_database.dart';

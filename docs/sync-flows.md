@@ -383,7 +383,7 @@ queries, `appResumed()` calls `refreshLiveQueries()` so the list shows it.
 
 ## Testing background sync on Android
 
-Package name: `com.example.offline_first_app_flutter_demo`. Use a **debug**
+Package name: `com.bornmajor.offline_first_subscription_app`. Use a **debug**
 build (release blocks plain `http://`).
 
 ### 1. See background runs in the log
@@ -411,16 +411,16 @@ job ids, then run one immediately (`-f` ignores constraints like "needs
 internet"):
 
 ```sh
-adb shell dumpsys jobscheduler | grep -A2 offline_first_app_flutter_demo
-adb shell cmd jobscheduler run -f com.example.offline_first_app_flutter_demo JOB_ID
+adb shell dumpsys jobscheduler | grep -A2 offline_first_subscription_app
+adb shell cmd jobscheduler run -f com.bornmajor.offline_first_subscription_app JOB_ID
 ```
 
-(On Windows without Git Bash, use `findstr offline_first_app_flutter_demo` instead of `grep`.)
+(On Windows without Git Bash, use `findstr offline_first_subscription_app` instead of `grep`.)
 
 WorkManager can also print what it has scheduled (debug builds):
 
 ```sh
-adb shell am broadcast -a "androidx.work.diagnostics.REQUEST_DIAGNOSTICS" -p "com.example.offline_first_app_flutter_demo"
+adb shell am broadcast -a "androidx.work.diagnostics.REQUEST_DIAGNOSTICS" -p "com.bornmajor.offline_first_subscription_app"
 adb logcat -s WM-DiagnosticsWrkr
 ```
 

@@ -1,4 +1,4 @@
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
 
 /// This subscription entity
 /// [id] - unique subscription ID

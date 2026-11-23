@@ -1,6 +1,6 @@
 import 'package:dio/dio.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/local/subscriptions_dao.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/remote/subscription_api.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/local/subscriptions_dao.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/remote/subscription_api.dart';
 
 /// Keeps the local database and the server in step.
 ///

@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:offline_first_app_flutter_demo/shared/widgets/app_text_field.dart';
+import 'package:offline_first_subscription_app/shared/widgets/app_text_field.dart';
 
 /// Reusable labeled dropdown that matches [AppTextField] styling.
 /// [items] - values to choose from

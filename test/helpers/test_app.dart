@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/network/network_info.dart';
+import 'package:offline_first_subscription_app/core/network/network_status.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/sync/sync_service.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
 
 import 'fake_server.dart';
 

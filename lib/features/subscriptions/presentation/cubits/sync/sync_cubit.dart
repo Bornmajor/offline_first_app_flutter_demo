@@ -2,11 +2,11 @@ import 'dart:async';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/background_sync.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_state.dart';
+import 'package:offline_first_subscription_app/core/network/network_info.dart';
+import 'package:offline_first_subscription_app/core/network/network_status.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/sync/background_sync.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/sync/sync_service.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_state.dart';
 
 /// Decides WHEN to sync, and tells the UI how syncing is going.
 ///

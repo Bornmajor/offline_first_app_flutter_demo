@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_cubit.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/subscription_form_page.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/sync_status_line.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/subscription_list/subscription_list_cubit.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/pages/subscription_form_page.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/widgets/subscription_card.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/widgets/sync_status_line.dart';
 
 /// Home screen — PAGE part: wiring only.
 ///

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
-import 'package:offline_first_app_flutter_demo/core/utils/date_formatter.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/progress_subscription_indicator.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/core/utils/date_formatter.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/widgets/progress_subscription_indicator.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
 
 /// Subscription card display in home screen
 /// [item] - subscription item

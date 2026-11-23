@@ -1,7 +1,7 @@
 import 'package:dio/dio.dart';
 import 'package:drift/drift.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
 
 /// Talks to the Express server. Sync only needs THREE calls:
 ///

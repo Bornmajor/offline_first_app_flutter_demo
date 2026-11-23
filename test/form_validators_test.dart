@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_first_app_flutter_demo/core/utils/form_validators.dart';
+import 'package:offline_first_subscription_app/core/utils/form_validators.dart';
 
 void main() {
   group('required', () {

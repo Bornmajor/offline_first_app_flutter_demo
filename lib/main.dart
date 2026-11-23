@@ -1,15 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/network/dio_client.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_info.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/remote/subscription_api.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/background_sync.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/sync_lifecycle_listener.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/network/dio_client.dart';
+import 'package:offline_first_subscription_app/core/network/network_info.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/remote/subscription_api.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/sync/background_sync.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/sync/sync_service.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/pages/home_page.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/widgets/sync_lifecycle_listener.dart';
 
 void main() {
   // Required because we do work (create the database) before runApp().

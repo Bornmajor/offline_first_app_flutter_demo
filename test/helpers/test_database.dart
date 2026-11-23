@@ -1,7 +1,7 @@
 import 'package:drift/drift.dart';
 import 'package:drift/native.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
 
 /// A real Drift database that lives in memory: fast, isolated per test,
 /// and gone when closed. Remember to `close()` it in tearDown.

@@ -1,7 +1,7 @@
 import 'package:drift/drift.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/database/tables/sync_metadata_table.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/local/subscriptions_table.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/database/tables/sync_metadata_table.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/local/subscriptions_table.dart';
 
 part 'subscriptions_dao.g.dart';
 

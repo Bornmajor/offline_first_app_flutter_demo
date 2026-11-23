@@ -20,7 +20,7 @@ import workmanager_apple
     //    BGTaskSchedulerPermittedIdentifiers in Info.plist. 30 min is only a
     //    hint: iOS decides when (and whether) to run it.
     WorkmanagerPlugin.registerPeriodicTask(
-      withIdentifier: "com.example.offline_first_app_flutter_demo.periodicSync",
+      withIdentifier: "com.bornmajor.offline_first_subscription_app.periodicSync",
       earliestBeginInSeconds: NSNumber(value: 30 * 60)
     )
 

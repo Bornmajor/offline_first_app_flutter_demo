@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/pages/home_page.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/subscription_card.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/pages/home_page.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/widgets/subscription_card.dart';
 
 import 'helpers/test_app.dart';
 import 'helpers/test_database.dart';
