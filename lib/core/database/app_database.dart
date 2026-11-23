@@ -2,6 +2,7 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 // BillingCycles and Uuid are used by the generated part file (enum column
 // and id clientDefault), which only sees this file's imports.
+import 'package:offline_first_subscription_app/core/database/settings_dao.dart';
 import 'package:offline_first_subscription_app/core/database/tables/sync_metadata_table.dart';
 import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/local/subscriptions_dao.dart';
@@ -15,7 +16,10 @@ part 'app_database.g.dart';
 /// Single SQLite database for the app — the offline source of truth.
 /// Tables and DAOs live in their features and are registered here;
 /// app-wide tables (like sync bookkeeping) live in core/database/tables.
-@DriftDatabase(tables: [Subscriptions, SyncMetadata], daos: [SubscriptionsDao])
+@DriftDatabase(
+  tables: [Subscriptions, SyncMetadata],
+  daos: [SubscriptionsDao, SettingsDao],
+)
 class AppDatabase extends _$AppDatabase {
   /// Real database: a file named `subscriptions_db` in the app's storage.
   AppDatabase() : super(_openConnection());

@@ -187,6 +187,7 @@ lib/
 
 ## Documentation
 
+- [Push Notifications](docs/push-notifications.md) — how FCM works: delivery path, tokens, message types, app states, channels, permission (Part 6, in progress).
 - [Sync Flows](docs/sync-flows.md) — step-by-step walkthroughs: upload, download, sync triggers, offline scenarios, conflicts, and the plan for background sync.
 - [Offline-First Concepts](docs/offline-first-concepts.md) — the ideas behind this app (local source of truth, reactive reads, UUIDs, soft delete, migrations, repository mapping, DI, state management, sync), each with a one-sentence summary and where it lives in the code.
 - [Tech Stack](docs/tech-stack.md) — the recommended offline-first stack with architecture diagrams and usage notes.

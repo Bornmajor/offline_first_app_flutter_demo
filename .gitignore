@@ -46,3 +46,8 @@ app.*.map.json
 
 # Widget Preview related
 .widget_preview/
+
+# Firebase config for this developer's project. Each developer downloads their
+# own from the Firebase console (see docs/push-notifications.md).
+android/app/google-services.json
+ios/Runner/GoogleService-Info.plist

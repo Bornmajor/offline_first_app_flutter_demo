@@ -1,8 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:offline_first_subscription_app/core/database/app_database.dart';
 import 'package:offline_first_subscription_app/core/network/dio_client.dart';
 import 'package:offline_first_subscription_app/core/network/network_info.dart';
+import 'package:offline_first_subscription_app/core/network/network_status.dart';
+import 'package:offline_first_subscription_app/core/notifications/device_api.dart';
+import 'package:offline_first_subscription_app/core/notifications/device_registration.dart';
+import 'package:offline_first_subscription_app/core/notifications/push_notification_service.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/remote/subscription_api.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/sync/background_sync.dart';
@@ -29,6 +35,10 @@ void main() {
   // ONE sync engine: keeps the database and the server in step.
   final syncService = SyncService(db.subscriptionsDao, SubscriptionApi(dio));
 
+  // ONE device registration: tells the server this phone's push token and
+  // reminder setting (only when they changed, retried when offline).
+  final deviceRegistration = DeviceRegistration(db.settingsDao, DeviceApi(dio));
+
   runApp(
     // DEPENDENCY INJECTION via the widget tree.
     //
@@ -49,10 +59,25 @@ void main() {
           value: db.subscriptionRepository,
         ),
         RepositoryProvider<SyncService>.value(value: syncService),
+        RepositoryProvider<DeviceRegistration>.value(value: deviceRegistration),
       ],
       child: const MyApp(),
     ),
   );
+
+  // Push notifications (FCM): connect to Firebase, ask permission, get the
+  // token. Started after runApp so the app shows immediately; not awaited
+  // because it waits on the network and on the permission dialog.
+  unawaited(
+    PushNotificationService(deviceRegistration: deviceRegistration)
+        .initialize(),
+  );
+
+  // If the token or setting changed while offline, send it once the
+  // connection is back.
+  NetworkInfo().watchStatus().listen((status) {
+    if (status == NetworkStatus.online) deviceRegistration.registerIfNeeded();
+  });
 }
 
 class MyApp extends StatelessWidget {

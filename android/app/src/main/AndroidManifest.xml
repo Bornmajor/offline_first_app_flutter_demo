@@ -6,6 +6,13 @@
         android:label="Subscription Tracker"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        <!-- Push notifications that don't name a channel (e.g. Firebase
+             console test messages) go to OUR channel instead of the generic
+             "Miscellaneous" one. The app creates this channel at startup
+             (PushNotificationService). -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="subscription_reminders" />
         <activity
             android:name=".MainActivity"
             android:exported="true"
