@@ -1,8 +1,11 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:offline_first_subscription_app/core/database/app_database.dart';
 import 'package:offline_first_subscription_app/core/network/dio_client.dart';
 import 'package:offline_first_subscription_app/core/network/network_info.dart';
+import 'package:offline_first_subscription_app/core/notifications/push_notification_service.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/remote/subscription_api.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
 import 'package:offline_first_subscription_app/features/subscriptions/data/sync/background_sync.dart';
@@ -53,6 +56,11 @@ void main() {
       child: const MyApp(),
     ),
   );
+
+  // Push notifications (FCM): connect to Firebase, ask permission, get the
+  // token. Started after runApp so the app shows immediately; not awaited
+  // because it waits on the network and on the permission dialog.
+  unawaited(PushNotificationService().initialize());
 }
 
 class MyApp extends StatelessWidget {

@@ -17,6 +17,7 @@ built.
 - [Delivery options: priority, time-to-live, collapse key](#delivery-options-priority-time-to-live-collapse-key)
 - [Our reminder message](#our-reminder-message)
 - [The plan for this app](#the-plan-for-this-app)
+- [Step 2 — Firebase setup, permission, token](#step-2--firebase-setup-permission-token)
 
 ---
 
@@ -221,3 +222,57 @@ Phone
 | 6 | Scheduled reminders + a test interface to send one any time |
 | 7 | Tap → open the subscription |
 | 8 | Edge cases, tests, docs |
+
+---
+
+## Step 2 — Firebase setup, permission, token
+
+### One-time Firebase setup (per developer)
+
+1. [Firebase console](https://console.firebase.google.com) → **Add project**.
+2. **Add app → Android** with package name
+   `com.bornmajor.offline_first_subscription_app` (must match exactly).
+3. Download **`google-services.json`** into `android/app/`.
+
+`google-services.json` is **git-ignored**: it belongs to *your* Firebase
+project, so each developer uses their own. (It isn't a secret like a
+password, but keeping project config out of a public repo avoids
+confusion and key-scanning alerts.)
+
+### What the code does
+
+| Piece | Where |
+| --- | --- |
+| Google Services Gradle plugin (reads `google-services.json`) | `android/settings.gradle.kts`, `android/app/build.gradle.kts` |
+| `firebase_core`, `firebase_messaging` | `pubspec.yaml` |
+| Initialize Firebase → ask permission → get token → watch for a new token | `lib/core/notifications/push_notification_service.dart` |
+| Started right after the app shows (not awaited) | `lib/main.dart` |
+
+The app logs:
+
+```
+Notification permission: authorized
+FCM token: cA1b2…long string…
+```
+
+> **Token vs FID:** firebase_messaging 17 deprecates `getToken()` /
+> `onTokenRefresh` in favour of a newer "direct send" model
+> (`register()` + `onRegistered`, giving a Firebase Installation ID). This
+> app keeps the classic token on purpose: it's what the Firebase console's
+> test message and firebase-admin's `token` target use, so every step can
+> be verified.
+
+### Send a test message from the Firebase console
+
+1. Run the app on the phone and allow notifications; copy the
+   `FCM token` line from the log (`adb logcat -s flutter`).
+2. **Put the app in the background** (Home button) — in the foreground,
+   Android doesn't show notifications automatically (handled in Step 3).
+3. Firebase console → **Messaging** (Engage) → **Create your first
+   campaign** → **Firebase Notification messages** → enter a title and
+   text → **Send test message** → paste the token → **Test**.
+4. The notification appears on the phone within seconds.
+
+If nothing arrives: notification permission denied, the app was
+force-stopped (by Settings or a battery manager), or the phone has no
+Google Play services.
