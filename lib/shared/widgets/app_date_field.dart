@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:offline_first_app_flutter_demo/core/utils/date_formatter.dart';
-import 'package:offline_first_app_flutter_demo/shared/widgets/app_text_field.dart';
+import 'package:offline_first_subscription_app/core/utils/date_formatter.dart';
+import 'package:offline_first_subscription_app/shared/widgets/app_text_field.dart';
 
 /// Reusable labeled date picker field that matches [AppTextField] styling.
 /// Tapping the field opens the material date picker. Being a [FormField],

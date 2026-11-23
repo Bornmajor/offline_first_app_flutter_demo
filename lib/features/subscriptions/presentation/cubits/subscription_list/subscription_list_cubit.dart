@@ -1,9 +1,9 @@
 import 'dart:async';
 
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/subscription_repository.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/subscription_repository.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/subscription_list/subscription_list_state.dart';
 
 /// Logic behind the home list.
 ///

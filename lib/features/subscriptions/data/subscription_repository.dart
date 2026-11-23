@@ -1,8 +1,8 @@
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/local/subscriptions_dao.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/mappers/subscription_mapper.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/local/subscriptions_dao.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/mappers/subscription_mapper.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
 
 /// The only entry point the UI uses for subscription data.
 /// It speaks in domain entities (`Subscription`) and hides Drift types

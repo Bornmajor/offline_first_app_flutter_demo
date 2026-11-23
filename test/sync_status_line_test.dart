@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_state.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/widgets/sync_status_line.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_state.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/widgets/sync_status_line.dart';
 
 /// A SyncCubit whose state the test sets directly (no sync logic).
 class _StubSyncCubit extends Cubit<SyncState> implements SyncCubit {

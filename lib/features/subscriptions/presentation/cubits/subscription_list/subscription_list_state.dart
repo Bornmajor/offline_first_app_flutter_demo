@@ -1,5 +1,5 @@
 import 'package:equatable/equatable.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
 
 /// Which "screen" the home list should draw.
 enum SubscriptionListStatus {

@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:internet_connection_checker_plus/internet_connection_checker_plus.dart';
-import 'package:offline_first_app_flutter_demo/core/network/network_status.dart';
+import 'package:offline_first_subscription_app/core/network/network_status.dart';
 
 // ---------------------------------------------------------------------------
 // Network Info

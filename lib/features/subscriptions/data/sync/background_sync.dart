@@ -1,10 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/network/dio_client.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/remote/subscription_api.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/sync/sync_service.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/network/dio_client.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/remote/subscription_api.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/sync/sync_service.dart';
 import 'package:workmanager/workmanager.dart';
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -71,7 +71,7 @@ class BackgroundSyncScheduler {
   /// BGTaskSchedulerPermittedIdentifiers in ios/Runner/Info.plist and the
   /// registration in ios/Runner/AppDelegate.swift (reverse-DNS style).
   static const periodicTaskId =
-      'com.example.offline_first_app_flutter_demo.periodicSync';
+      'com.bornmajor.offline_first_subscription_app.periodicSync';
 
   /// WorkManager exists on Android (and iOS, with extra setup). Elsewhere —
   /// Windows, web, tests — every method does nothing.

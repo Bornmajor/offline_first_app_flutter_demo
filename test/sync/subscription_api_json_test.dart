@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/remote/subscription_api.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/remote/subscription_api.dart';
 
 /// The JSON format is where small mistakes hide (dates, number types), so
 /// the two conversion functions get their own tests.

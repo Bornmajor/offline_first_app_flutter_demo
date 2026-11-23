@@ -1,6 +1,6 @@
 {
-    "name": "offline_first_app_flutter_demo",
-    "short_name": "offline_first_app_flutter_demo",
+    "name": "Subscription Tracker",
+    "short_name": "Subscriptions",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#0175C2",

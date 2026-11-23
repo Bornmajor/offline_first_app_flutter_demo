@@ -1,5 +1,5 @@
 import 'package:drift/drift.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
 import 'package:uuid/uuid.dart';
 
 /// Describes the `subscriptions` SQL table in Dart.

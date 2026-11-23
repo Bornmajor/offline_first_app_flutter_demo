@@ -1,4 +1,4 @@
-package com.example.offline_first_app_flutter_demo
+package com.bornmajor.offline_first_subscription_app
 
 import io.flutter.embedding.android.FlutterActivity
 

@@ -1,6 +1,6 @@
 import 'package:flutter/widgets.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
 
 /// Tells SyncCubit when the app goes off screen and comes back, so it can
 /// hand sync over to the background task and take it back.

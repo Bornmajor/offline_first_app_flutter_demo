@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "com.example.offline_first_app_flutter_demo"
+    namespace = "com.bornmajor.offline_first_subscription_app"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -16,7 +16,7 @@ android {
 
     defaultConfig {
         // TODO: Specify your own unique Application ID (https://developer.android.com/studio/build/application-id.html).
-        applicationId = "com.example.offline_first_app_flutter_demo"
+        applicationId = "com.bornmajor.offline_first_subscription_app"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
         minSdk = flutter.minSdkVersion

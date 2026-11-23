@@ -1,6 +1,6 @@
 import 'package:drift/drift.dart';
-import 'package:offline_first_app_flutter_demo/core/database/app_database.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/domain/entities/subscription.dart';
+import 'package:offline_first_subscription_app/core/database/app_database.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/domain/entities/subscription.dart';
 
 // ---------------------------------------------------------------------------
 // Drift row <-> domain entity mapping

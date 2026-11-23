@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/presentation/cubits/sync/sync_state.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_cubit.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/presentation/cubits/sync/sync_state.dart';
 
 /// One small line under the app title, e.g. "Synced", "Syncing…",
 /// "2 changes waiting", "Offline · 1 change waiting". Tap it to sync now.

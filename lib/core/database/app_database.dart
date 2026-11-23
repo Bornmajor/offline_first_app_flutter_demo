@@ -2,10 +2,10 @@ import 'package:drift/drift.dart';
 import 'package:drift_flutter/drift_flutter.dart';
 // BillingCycles and Uuid are used by the generated part file (enum column
 // and id clientDefault), which only sees this file's imports.
-import 'package:offline_first_app_flutter_demo/core/database/tables/sync_metadata_table.dart';
-import 'package:offline_first_app_flutter_demo/core/enums/billing_cycles.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/local/subscriptions_dao.dart';
-import 'package:offline_first_app_flutter_demo/features/subscriptions/data/local/subscriptions_table.dart';
+import 'package:offline_first_subscription_app/core/database/tables/sync_metadata_table.dart';
+import 'package:offline_first_subscription_app/core/enums/billing_cycles.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/local/subscriptions_dao.dart';
+import 'package:offline_first_subscription_app/features/subscriptions/data/local/subscriptions_table.dart';
 import 'package:uuid/uuid.dart';
 
 // The generated code (`_$AppDatabase`) lives in this file.
